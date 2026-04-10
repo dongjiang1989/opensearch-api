@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opensearch-file-api.fullname" . }}
+  labels:
+    {{- include "opensearch-file-api.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "opensearch-file-api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "opensearch-file-api.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "opensearch-file-api.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.server.port }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          env:
+            - name: OPENSEARCH_SERVER_PORT
+              value: {{ .Values.config.server.port | quote }}
+            - name: OPENSEARCH_SERVER_HOST
+              value: {{ .Values.config.server.host | quote }}
+            - name: OPENSEARCH_SERVER_MODE
+              value: {{ .Values.config.server.mode | quote }}
+            - name: OPENSEARCH_OPENSEARCH_HOST
+              value: {{ .Values.config.opensearch.host | quote }}
+            - name: OPENSEARCH_OPENSEARCH_PORT
+              value: {{ .Values.config.opensearch.port | quote }}
+            - name: OPENSEARCH_OPENSEARCH_USERNAME
+              value: {{ .Values.config.opensearch.username | quote }}
+            - name: OPENSEARCH_OPENSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opensearch-file-api.fullname" . }}-opensearch
+                  key: password
+            - name: OPENSEARCH_OPENSEARCH_SECURE
+              value: {{ .Values.config.opensearch.secure | quote }}
+            - name: OPENSEARCH_STORAGE_TYPE
+              value: {{ .Values.config.storage.type | quote }}
+            - name: OPENSEARCH_STORAGE_LOCAL_PATH
+              value: {{ .Values.config.storage.localPath | quote }}
+            - name: OPENSEARCH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opensearch-file-api.fullname" . }}-jwt
+                  key: secret
+            - name: OPENSEARCH_LOG_LEVEL
+              value: {{ .Values.config.log.level | quote }}
+            - name: OPENSEARCH_LOG_FORMAT
+              value: {{ .Values.config.log.format | quote }}
+          {{- if eq .Values.config.storage.type "s3" }}
+            - name: OPENSEARCH_STORAGE_S3_BUCKET
+              value: {{ .Values.config.storage.s3Bucket | quote }}
+            - name: OPENSEARCH_STORAGE_S3_REGION
+              value: {{ .Values.config.storage.s3Region | quote }}
+            - name: OPENSEARCH_STORAGE_S3_ENDPOINT
+              value: {{ .Values.config.storage.s3Endpoint | quote }}
+            - name: OPENSEARCH_STORAGE_S3_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opensearch-file-api.fullname" . }}-s3
+                  key: keyId
+            - name: OPENSEARCH_STORAGE_S3_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opensearch-file-api.fullname" . }}-s3
+                  key: secret
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.config.storage.localPath }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "opensearch-file-api.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

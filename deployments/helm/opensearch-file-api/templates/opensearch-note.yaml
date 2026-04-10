@@ -1,0 +1,17 @@
+{{- if .Values.opensearch.enabled }}
+---
+# OpenSearch 子图表占位符
+# 实际部署时建议使用 opensearch-operator 或 opensearch Helm chart
+# 这里仅作为配置参考
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "opensearch-file-api.fullname" . }}-opensearch-note
+  labels:
+    {{- include "opensearch-file-api.labels" . | nindent 4 }}
+data:
+  NOTE: |
+    OpenSearch deployment is configured externally.
+    Please install OpenSearch separately or use the opensearch-operator.
+    Current configuration points to: {{ .Values.config.opensearch.host }}:{{ .Values.config.opensearch.port }}
+{{- end }}

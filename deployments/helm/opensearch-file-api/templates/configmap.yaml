@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "opensearch-file-api.fullname" . }}-config
+  labels:
+    {{- include "opensearch-file-api.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server:
+      port: {{ .Values.config.server.port }}
+      host: {{ .Values.config.server.host }}
+      mode: {{ .Values.config.server.mode }}
+      read_timeout: {{ .Values.config.server.readTimeout }}
+      write_timeout: {{ .Values.config.server.writeTimeout }}
+
+    opensearch:
+      host: {{ .Values.config.opensearch.host }}
+      port: {{ .Values.config.opensearch.port }}
+      username: {{ .Values.config.opensearch.username }}
+      secure: {{ .Values.config.opensearch.secure }}
+      index_prefix: {{ .Values.config.opensearch.indexPrefix }}
+
+    storage:
+      type: {{ .Values.config.storage.type }}
+      local_path: {{ .Values.config.storage.localPath }}
+      {{- if eq .Values.config.storage.type "s3" }}
+      s3_bucket: {{ .Values.config.storage.s3Bucket }}
+      s3_region: {{ .Values.config.storage.s3Region }}
+      s3_endpoint: {{ .Values.config.storage.s3Endpoint }}
+      {{- end }}
+
+    jwt:
+      issuer: {{ .Values.config.jwt.issuer }}
+      expire_time: {{ .Values.config.jwt.expireTime }}
+
+    log:
+      level: {{ .Values.config.log.level }}
+      format: {{ .Values.config.log.format }}

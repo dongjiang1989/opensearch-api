@@ -1,0 +1,33 @@
+server:
+  port: 8080
+  host: "0.0.0.0"
+  mode: "debug"
+  read_timeout: "30s"
+  write_timeout: "60s"
+
+opensearch:
+  host: "localhost"
+  port: 9200
+  username: "admin"
+  password: "admin"
+  secure: false  # 开发环境设为 false，生产环境使用 true
+  index_prefix: "tenant"
+
+storage:
+  type: "local"  # local 或 s3
+  local_path: "./data/files"
+  # S3 配置（当 type=s3 时使用）
+  # s3_bucket: "my-bucket"
+  # s3_region: "us-east-1"
+  # s3_endpoint: ""  # MinIO 地址，如使用 AWS 留空
+  # s3_key_id: ""
+  # s3_secret: ""
+
+jwt:
+  secret: "your-secret-key-change-in-production"
+  issuer: "opensearch-file-api"
+  expire_time: "24h"
+
+log:
+  level: "debug"
+  format: "json"  # json 或 console

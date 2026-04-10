@@ -1,0 +1,186 @@
+# 默认配置值
+
+# 副本数
+replicaCount: 1
+
+# 镜像配置
+image:
+  repository: dongjiang1989/opensearch-file-api
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# 镜像拉取密钥
+imagePullSecrets: []
+
+# 服务名称
+nameOverride: ""
+fullnameOverride: ""
+
+# 服务账号配置
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod 注解
+podAnnotations: {}
+
+# Pod 安全上下文
+podSecurityContext:
+  fsGroup: 1000
+
+# 容器安全上下文
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+
+# 服务配置
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# Ingress 配置
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+  hosts:
+    - host: api.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# 资源限制
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# 自动扩缩配置
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# 节点选择器
+nodeSelector: {}
+
+# 容忍度
+tolerations: []
+
+# 亲和性
+affinity: {}
+
+# 应用配置
+config:
+  # 服务器配置
+  server:
+    port: 8080
+    host: "0.0.0.0"
+    mode: "release"
+    readTimeout: "30s"
+    writeTimeout: "60s"
+
+  # OpenSearch 配置
+  opensearch:
+    host: "opensearch-cluster-master"
+    port: 9200
+    username: "admin"
+    password: "admin"
+    secure: false
+    indexPrefix: "tenant"
+
+  # 存储配置
+  storage:
+    type: "local"  # local 或 s3
+    localPath: "/app/data/files"
+    s3Bucket: ""
+    s3Region: ""
+    s3Endpoint: ""
+    s3KeyId: ""
+    s3Secret: ""
+
+  # JWT 配置
+  jwt:
+    secret: "change-this-secret-key-in-production"
+    issuer: "opensearch-file-api"
+    expireTime: "24h"
+
+  # 日志配置
+  log:
+    level: "info"
+    format: "json"
+
+# OpenSearch 依赖（如果 enabled=false，需要指定外部 OpenSearch）
+opensearch:
+  enabled: true
+  clusterName: "opensearch-cluster"
+  singleNode: true
+  disableSecurity: true
+
+  # 资源限制
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+  # 持久化
+  persistence:
+    enabled: true
+    size: "10Gi"
+    storageClass: ""
+
+# MinIO 依赖（可选，用于 S3 兼容存储）
+minio:
+  enabled: false
+  replicas: 1
+
+  # 根用户和密码
+  rootUser: "minioadmin"
+  rootPassword: "minioadmin123"
+
+  # 桶配置
+  defaultBucket: "opensearch-files"
+
+  # 持久化
+  persistence:
+    enabled: true
+    size: "10Gi"
+
+# 持久化卷声明
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: "10Gi"
+
+# 探针配置
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3

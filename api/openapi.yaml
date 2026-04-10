@@ -1,0 +1,799 @@
+openapi: 3.0.3
+info:
+  title: OpenSearch File API
+  description: |
+    多租户文件索引服务，支持 PDF、图片、文档等文件的索引、存储和搜索
+
+    ## 认证说明
+
+    本 API 使用 JWT (JSON Web Token) 进行认证。所有需要认证接口都需要在请求头中携带 JWT token。
+
+    ### JWT Token 结构
+
+    Token 中包含以下声明：
+    - `tenant_id`: 租户 ID，用于多租户隔离
+    - `user_id`: 用户 ID
+    - `role`: 用户角色（如 admin, user 等）
+    - `exp`: token 过期时间
+    - `iss`: token 签发者
+
+    ### 使用方式
+
+    1. 通过 `/token` 接口获取 JWT token（仅用于测试，生产环境应使用独立的认证服务）
+    2. 在请求头中携带 token: `Authorization: Bearer <your_token>`
+    3. 大多数接口还需要 `X-Tenant-ID` 头来指定租户 ID
+
+    ## 多租户隔离
+
+    每个租户的数据完全隔离，通过 `tenant_id` 和 `X-Tenant-ID` 头实现。租户的数据存储在独立的 OpenSearch 索引中。
+
+    ## 错误处理
+
+    所有错误返回统一的格式：
+    ```json
+    {
+      "success": false,
+      "error": "错误描述",
+      "code": 错误码
+    }
+    ```
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    tenantId:
+      type: apiKey
+      in: header
+      name: X-Tenant-ID
+
+  schemas:
+    # 通用响应
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        data:
+          type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        code:
+          type: integer
+
+    # Token
+    TokenRequest:
+      type: object
+      required:
+        - tenant_id
+        - user_id
+      properties:
+        tenant_id:
+          type: string
+        user_id:
+          type: string
+        role:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        token:
+          type: string
+        expires_in:
+          type: integer
+          format: int64
+
+    # 租户
+    Tenant:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          type: string
+          enum: [active, inactive, deleted]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # 文件
+    FileUploadResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        file_id:
+          type: string
+        filename:
+          type: string
+        content_type:
+          type: string
+        file_size:
+          type: integer
+          format: int64
+        indexed_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+
+    FileInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        filename:
+          type: string
+        content_type:
+          type: string
+        file_type:
+          type: string
+        file_size:
+          type: integer
+          format: int64
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    FileListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        total:
+          type: integer
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileInfo'
+
+    # 搜索
+    SearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        filters:
+          type: object
+        from:
+          type: integer
+          default: 0
+        size:
+          type: integer
+          default: 10
+        sort:
+          type: array
+          items:
+            type: object
+        highlight:
+          type: object
+
+    SearchHit:
+      type: object
+      properties:
+        id:
+          type: string
+        score:
+          type: number
+        source:
+          type: object
+        highlight:
+          type: object
+
+    SearchResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        total:
+          type: integer
+        took_ms:
+          type: integer
+        hits:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHit'
+
+    # 聚合
+    AggregateRequest:
+      type: object
+      required:
+        - field
+      properties:
+        field:
+          type: string
+
+    AggregateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        field:
+          type: string
+        buckets:
+          type: object
+          additionalProperties:
+            type: integer
+
+    # 健康检查
+    HealthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        opensearch:
+          type: object
+          properties:
+            status:
+              type: string
+            cluster_id:
+              type: string
+            nodes:
+              type: integer
+
+  tags:
+    - name: Health
+      description: 健康检查接口，用于服务状态检查
+    - name: Authentication
+      description: JWT 认证相关接口，用于生成和验证 token
+    - name: Tenant
+      description: 租户管理接口，包括租户的增删改查操作
+    - name: File
+      description: 文件管理接口，包括文件上传、下载、删除和元数据查询
+    - name: Search
+      description: 搜索接口，支持全文搜索、聚合查询和文件数量统计
+    - name: Metrics
+      description: Prometheus 格式的服务监控指标
+
+paths:
+  /health:
+    get:
+      summary: 健康检查
+      tags:
+        - Health
+      responses:
+        '200':
+          description: 服务健康
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /token:
+    post:
+      summary: 生成 JWT Token（测试用）
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: Token 生成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/tenants:
+    post:
+      summary: 创建租户
+      description: 创建一个新的租户，需要提供唯一的租户 ID 和名称
+      tags:
+        - Tenant
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tenant'
+      responses:
+        '201':
+          description: 租户创建成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Tenant'
+        '400':
+          description: 请求参数错误
+        '409':
+          description: 租户已存在
+
+    get:
+      summary: 列出租户
+      description: 获取所有租户的列表，支持分页
+      tags:
+        - Tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 租户列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Tenant'
+
+  /admin/tenants/{id}:
+    get:
+      summary: 获取租户信息
+      description: 根据租户 ID 获取详细信息
+      tags:
+        - Tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 租户信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Tenant'
+        '404':
+          description: 租户不存在
+
+    put:
+      summary: 更新租户
+      description: 更新租户信息，只能更新 name、description 和 metadata 字段
+      tags:
+        - Tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tenant'
+      responses:
+        '200':
+          description: 更新成功
+
+    delete:
+      summary: 删除租户（软删除）
+      description: 软删除租户，租户状态变为 deleted，但数据仍保留
+      tags:
+        - Tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  /files:
+    post:
+      summary: 上传文件
+      tags:
+        - File
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                description:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+        '400':
+          description: 请求参数错误
+        '401':
+          description: 未授权
+
+    get:
+      summary: 列出文件
+      tags:
+        - File
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 文件列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileListResponse'
+
+  /files/{file_id}:
+    get:
+      summary: 下载文件
+      tags:
+        - File
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 文件内容
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: 文件不存在
+
+    delete:
+      summary: 删除文件
+      tags:
+        - File
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+
+  /search:
+    get:
+      summary: 搜索文件（GET）
+      tags:
+        - Search
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      parameters:
+        - name: q
+          in: query
+          description: 搜索关键词
+          schema:
+            type: string
+        - name: file_type
+          in: query
+          schema:
+            type: string
+        - name: content_type
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: 搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+
+    post:
+      summary: 搜索文件（POST 高级搜索）
+      tags:
+        - Search
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: 搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+
+  /search/aggregate:
+    post:
+      summary: 聚合查询
+      tags:
+        - Search
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AggregateRequest'
+      responses:
+        '200':
+          description: 聚合结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AggregateResponse'
+
+  /search/count:
+    get:
+      summary: 统计文件数量
+      tags:
+        - Search
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      responses:
+        '200':
+          description: 文件数量
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+
+  /ping:
+    get:
+      summary: 服务 Ping 检查（轻量级健康检查）
+      tags:
+        - Health
+      responses:
+        '200':
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: pong
+        '503':
+          description: 服务异常
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /files/{file_id}/metadata:
+    get:
+      summary: 获取文件元数据
+      tags:
+        - File
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 文件元数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          filename:
+                            type: string
+                          content_type:
+                            type: string
+                          file_type:
+                            type: string
+                          file_size:
+                            type: integer
+                          storage_path:
+                            type: string
+                          tenant_id:
+                            type: string
+                          created_at:
+                            type: string
+                            format: date-time
+                          updated_at:
+                            type: string
+                            format: date-time
+        '404':
+          description: 文件不存在
+
+  /admin/tenants/{id}/hard:
+    delete:
+      summary: 彻底删除租户（硬删除）
+      tags:
+        - Tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: 租户不存在
+        '401':
+          description: 未授权
+
+  /metrics:
+    get:
+      summary: Prometheus Metrics
+      description: |
+        返回 Prometheus 格式的服务监控指标，包括：
+
+        - HTTP 请求总数 (opensearch_api_http_requests_total)
+        - HTTP 请求延迟 (opensearch_api_http_request_duration_seconds)
+        - HTTP 请求/响应大小 (opensearch_api_http_request/response_size_bytes)
+        - 正在处理的请求数 (opensearch_api_http_inflight_requests)
+        - Go 运行时指标 (go_*)
+        - 进程指标 (process_*)
+      tags:
+        - Metrics
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP opensearch_api_http_requests_total Total number of HTTP requests
+                  # TYPE opensearch_api_http_requests_total counter
+                  opensearch_api_http_requests_total{method="GET",path="/health",status="200"} 42
+                  # HELP go_goroutines Number of goroutines that currently exist
+                  # TYPE go_goroutines gauge
+                  go_goroutines 10
