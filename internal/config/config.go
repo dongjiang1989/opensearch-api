@@ -45,6 +45,9 @@ type StorageConfig struct {
 	S3Endpoint string `mapstructure:"s3_endpoint"` // MinIO 等兼容服务
 	S3KeyID    string `mapstructure:"s3_key_id"`
 	S3Secret   string `mapstructure:"s3_secret"`
+	// OCR 配置
+	ImageOCR         bool   `mapstructure:"image_ocr"`          // 是否启用图片 OCR
+	ImageOCRLang     string `mapstructure:"image_ocr_lang"`     // OCR 语言，默认 eng
 }
 
 // JWTConfig JWT 配置
@@ -115,6 +118,8 @@ func setDefaults() {
 	// Storage
 	viper.SetDefault("storage.type", "local")
 	viper.SetDefault("storage.local_path", "./data/files")
+	viper.SetDefault("storage.image_ocr", false)
+	viper.SetDefault("storage.image_ocr_lang", "eng")
 
 	// JWT
 	viper.SetDefault("jwt.secret", "change-this-secret-key")

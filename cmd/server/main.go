@@ -91,7 +91,10 @@ func main() {
 	// 初始化内容提取器
 	extractor := storage.NewCompositeExtractor(
 		storage.NewPDFExtractor(),
-		storage.NewImageExtractor(storage.ImageExtractorConfig{EnableOCR: false}), // OCR 需要额外配置
+		storage.NewImageExtractor(storage.ImageExtractorConfig{
+			EnableOCR: cfg.Storage.ImageOCR,
+			OCRLang:   cfg.Storage.ImageOCRLang,
+		}),
 		storage.NewTextExtractor(storage.TextExtractorConfig{MaxSize: 10 * 1024 * 1024}),
 		storage.NewDocumentExtractor(),
 	)

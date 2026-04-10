@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"os/exec"
 	"strings"
 
 	// 图片格式支持
@@ -18,18 +19,33 @@ import (
 // ImageExtractor 图片内容提取器
 type ImageExtractor struct {
 	enableOCR bool
+	ocrLang   string
 }
 
 // ImageExtractorConfig 图片提取器配置
 type ImageExtractorConfig struct {
 	EnableOCR bool
+	OCRLang   string // OCR 语言，默认 "eng"
 }
 
 // NewImageExtractor 创建图片提取器
 func NewImageExtractor(cfg ImageExtractorConfig) *ImageExtractor {
+	lang := cfg.OCRLang
+	if lang == "" {
+		lang = "eng"
+	}
 	return &ImageExtractor{
 		enableOCR: cfg.EnableOCR,
+		ocrLang:   lang,
 	}
+}
+
+// getOCRLang 获取 OCR 语言
+func (e *ImageExtractor) getOCRLang() string {
+	if e.ocrLang == "" {
+		return "eng"
+	}
+	return e.ocrLang
 }
 
 // CanHandle 判断是否是图片文件
@@ -86,26 +102,26 @@ func (e *ImageExtractor) Extract(ctx context.Context, reader io.Reader, contentT
 	}, nil
 }
 
-// performOCR 执行 OCR（简化实现）
-// 实际生产中可集成：
-// 1. go-tesseract (需要安装 tesseract-ocr)
-// 2. 调用云服务 API (AWS Rekognition, Google Vision, Azure Computer Vision)
+// performOCR 执行 OCR
+// 使用 tesseract 命令行工具 (需要先安装 tesseract-ocr)
+// macOS: brew install tesseract
+// Linux: apt-get install tesseract-ocr 或 yum install tesseract
+// Docker: 已在 Dockerfile 中安装
 func (e *ImageExtractor) performOCR(data []byte, contentType string) (string, error) {
-	// 这里提供一个框架，实际实现需要添加 OCR 依赖
-	// 示例：使用 go-tesseract
-	/*
-		 tess, err := gosseract.NewClient()
-		if err != nil {
-			return "", err
+	// 使用 tesseract 命令行工具
+	// tesseract stdin stdout -l <lang>
+	cmd := exec.Command("tesseract", "stdin", "stdout", "-l", e.getOCRLang())
+	cmd.Stdin = bytes.NewReader(data)
+
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", fmt.Errorf("tesseract failed: %s", string(exitErr.Stderr))
 		}
-		defer tess.Close()
+		return "", fmt.Errorf("tesseract failed: %w", err)
+	}
 
-		tess.SetImage(data)
-		return tess.Text()
-	*/
-
-	// 当前返回空，表示 OCR 未实现
-	return "", nil
+	return strings.TrimSpace(string(output)), nil
 }
 
 // GetImageMetadata 获取图片元数据（便捷函数）

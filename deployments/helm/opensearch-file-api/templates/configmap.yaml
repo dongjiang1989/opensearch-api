@@ -28,6 +28,9 @@ data:
       s3_region: {{ .Values.config.storage.s3Region }}
       s3_endpoint: {{ .Values.config.storage.s3Endpoint }}
       {{- end }}
+      # OCR 配置
+      image_ocr: {{ .Values.config.storage.imageOcr }}
+      image_ocr_lang: {{ .Values.config.storage.imageOcrLang }}
 
     jwt:
       issuer: {{ .Values.config.jwt.issuer }}

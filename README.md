@@ -232,6 +232,67 @@ make docker-build
 | Office | .doc, .docx, .xls, .xlsx, .ppt, .pptx | 基础支持 |
 | RTF | .rtf | 文本内容 |
 
+## 图片 OCR 识别
+
+服务支持对上传的图片进行 OCR 识别，提取图片中的文字内容。
+
+### Docker 中使用 OCR
+
+Docker 镜像已预装 Tesseract OCR 及多语言包，无需额外配置即可使用。
+
+```bash
+# 构建 Docker 镜像（包含 OCR 支持）
+make docker-build
+
+# 或使用 docker-compose
+cd deployments/docker
+docker-compose up -d
+```
+
+### 本地开发启用 OCR
+
+1. **安装 Tesseract OCR**
+
+   ```bash
+   # macOS
+   brew install tesseract
+
+   # Ubuntu/Debian
+   apt-get install tesseract-ocr
+
+   # 安装语言包（可选）
+   brew install tesseract-lang  # macOS
+   apt-get install tesseract-ocr-eng tesseract-ocr-chi-sim  # Linux
+   ```
+
+2. **配置文件** (`configs/config.yaml`)
+
+   ```yaml
+   storage:
+     image_ocr: true        # 启用 OCR
+     image_ocr_lang: "eng"  # 语言：eng(英文), chi_sim(简体中文), jpn(日文)
+   ```
+
+### 支持的语言
+
+- `eng` - 英语（默认）
+- `chi_sim` - 简体中文
+- `chi_tra` - 繁体中文
+- `jpn` - 日语
+- `kor` - 韩语
+
+更多语言请参考 [Tesseract 文档](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html)
+
+### 环境变量
+
+```bash
+# 启用 OCR
+export OPENSEARCH_STORAGE_IMAGE_OCR=true
+
+# 设置 OCR 语言
+export OPENSEARCH_STORAGE_IMAGE_OCR_LANG=chi_sim
+```
+
 ## 架构
 
 ```

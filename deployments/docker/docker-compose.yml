@@ -68,6 +68,8 @@ services:
       - OPENSEARCH_OPENSEARCH_SECURE=false
       - OPENSEARCH_STORAGE_TYPE=local
       - OPENSEARCH_STORAGE_LOCAL_PATH=/app/data/files
+      - OPENSEARCH_STORAGE_IMAGE_OCR=true
+      - OPENSEARCH_STORAGE_IMAGE_OCR_LANG=eng
       - OPENSEARCH_JWT_SECRET=dev-secret-key-change-in-production
       - OPENSEARCH_SERVER_MODE=debug
       - OPENSEARCH_LOG_LEVEL=debug

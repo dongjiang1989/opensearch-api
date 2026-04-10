@@ -108,6 +108,9 @@ config:
     s3Endpoint: ""
     s3KeyId: ""
     s3Secret: ""
+    # OCR 配置
+    imageOcr: true
+    imageOcrLang: "eng"
 
   # JWT 配置
   jwt:

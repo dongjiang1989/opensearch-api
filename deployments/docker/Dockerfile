@@ -23,8 +23,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # 运行阶段
 FROM alpine:3.19
 
-# 安装运行时依赖
-RUN apk add --no-cache ca-certificates tzdata
+# 安装运行时依赖，包括 Tesseract OCR 及其语言包
+RUN apk add --no-cache ca-certificates tzdata \
+    tesseract-ocr \
+    tesseract-ocr-data-eng \
+    tesseract-ocr-data-chi_sim \
+    tesseract-ocr-data-chi_tra \
+    tesseract-ocr-data-jpn \
+    tesseract-ocr-data-kor
 
 WORKDIR /app
 

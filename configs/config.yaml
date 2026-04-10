@@ -22,6 +22,9 @@ storage:
   # s3_endpoint: ""  # MinIO 地址，如使用 AWS 留空
   # s3_key_id: ""
   # s3_secret: ""
+  # OCR 配置
+  image_ocr: true        # 是否启用图片 OCR（Docker 中默认启用）
+  image_ocr_lang: "eng"  # OCR 语言：eng(英文), chi_sim(简体中文), jpn(日文) 等
 
 jwt:
   secret: "your-secret-key-change-in-production"
