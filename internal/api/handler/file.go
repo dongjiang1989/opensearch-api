@@ -163,7 +163,9 @@ func (h *FileHandler) GetFile(c *gin.Context) {
 	c.Header("Content-Disposition", "attachment; filename=\""+metadata.Filename+"\"")
 	c.Header("Content-Type", metadata.ContentType)
 	c.Header("Content-Length", string(rune(metadata.FileSize)))
-	io.Copy(c.Writer, reader)
+	if _, err := io.Copy(c.Writer, reader); err != nil {
+		h.logger.Error("failed to write file response", zap.Error(err))
+	}
 }
 
 // GetFileMetadata 获取文件元数据

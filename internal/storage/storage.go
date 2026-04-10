@@ -67,34 +67,18 @@ type ContentExtractor interface {
 
 // GetFileType 根据内容类型获取文件类型
 func GetFileType(contentType string) FileType {
-	switch {
-	case contentType == "application/pdf":
+	switch contentType {
+	case "application/pdf":
 		return FileTypePDF
-	case contentType == "application/msword",
-		contentType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		contentType == "application/vnd.ms-excel",
-		contentType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		contentType == "application/vnd.ms-powerpoint",
-		contentType == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+	case "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation":
 		return FileTypeDocument
-	case contentType == "image/jpeg",
-		contentType == "image/png",
-		contentType == "image/gif",
-		contentType == "image/webp",
-		contentType == "image/svg+xml":
+	case "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml":
 		return FileTypeImage
-	case contentType == "video/mp4",
-		contentType == "video/x-msvideo",
-		contentType == "video/quicktime":
+	case "video/mp4", "video/x-msvideo", "video/quicktime":
 		return FileTypeVideo
-	case contentType == "audio/mpeg",
-		contentType == "audio/wav",
-		contentType == "audio/ogg":
+	case "audio/mpeg", "audio/wav", "audio/ogg":
 		return FileTypeAudio
-	case contentType == "text/plain",
-		contentType == "text/markdown",
-		contentType == "text/html",
-		contentType == "application/json":
+	case "text/plain", "text/markdown", "text/html", "application/json":
 		return FileTypeText
 	default:
 		return FileTypeOther

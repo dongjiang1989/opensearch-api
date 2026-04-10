@@ -61,20 +61,20 @@ func (e *TextExtractor) Extract(ctx context.Context, reader io.Reader, contentTy
 	text := string(data)
 
 	// 根据内容类型处理
-	switch {
-	case contentType == "text/html":
+	switch contentType {
+	case "text/html":
 		text = extractTextFromHTML(text)
-	case contentType == "application/json":
+	case "application/json":
 		// JSON 保持原样，或者可以选择只提取值
 		text = formatJSON(text)
-	case contentType == "text/csv":
+	case "text/csv":
 		// CSV 保持原样
 		text = normalizeCSV(text)
 	}
 
 	metadata := map[string]interface{}{
-		"size":        len(data),
-		"lines":       countLines(text),
+		"size":         len(data),
+		"lines":        countLines(text),
 		"content_type": contentType,
 	}
 
@@ -180,8 +180,8 @@ func (e *DocumentExtractor) CanHandle(contentType string) bool {
 	case "application/msword", // .doc
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
 		"application/vnd.ms-excel", // .xls
-		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
-		"application/vnd.ms-powerpoint", // .ppt
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",         // .xlsx
+		"application/vnd.ms-powerpoint",                                             // .ppt
 		"application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
 		"application/rtf", // .rtf
 		"text/rtf":

@@ -121,7 +121,9 @@ func (i *Indexer) IndexFile(ctx context.Context, tenantID, filename string, read
 	// 索引到 OpenSearch
 	if err := i.osClient.IndexDocument(ctx, tenantID, fileID, doc); err != nil {
 		// 索引失败，尝试回滚存储
-		i.storage.Delete(ctx, tenantID, fileID)
+		if delErr := i.storage.Delete(ctx, tenantID, fileID); delErr != nil {
+			i.logger.Warn("failed to rollback storage", zap.Error(delErr))
+		}
 		return nil, fmt.Errorf("failed to index document: %w", err)
 	}
 

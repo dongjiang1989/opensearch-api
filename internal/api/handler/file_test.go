@@ -178,8 +178,14 @@ func TestFileHandler_UploadFile_MissingTenant(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.pdf")
-	part.Write([]byte("test"))
+	part, err := writer.CreateFormFile("file", "test.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = part.Write([]byte("test"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	writer.Close()
 
 	w := httptest.NewRecorder()

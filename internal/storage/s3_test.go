@@ -8,17 +8,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// MockS3Client 模拟 S3 客户端
-type MockS3Client struct {
-	files map[string][]byte
-}
-
-func newMockS3Client() *MockS3Client {
-	return &MockS3Client{
-		files: make(map[string][]byte),
-	}
-}
-
 // 注意：S3Storage 的完整测试需要真实的 S3/MinIO 服务
 // 这里只测试配置和错误处理逻辑
 

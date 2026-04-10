@@ -1,8 +1,6 @@
 package opensearch
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,29 +9,6 @@ import (
 
 	"github.com/dongjiang1989/opensearch-api/internal/config"
 )
-
-// TestClient 测试用客户端
-func newTestClient(handler http.HandlerFunc) (*Client, func()) {
-	server := httptest.NewServer(handler)
-
-	logger, _ := zap.NewDevelopment()
-
-	// 使用测试服务器地址
-	client, err := NewClient(&config.OpenSearchConfig{
-		Host:        server.URL[7:], // 移除 "http://"
-		Port:        80,
-		Username:    "test",
-		Password:    "test",
-		Secure:      false,
-		IndexPrefix: "tenant",
-	}, logger)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return client, server.Close
-}
 
 func TestIndexName(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
@@ -158,8 +133,7 @@ func TestSearchQuery_BuildQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := client.buildQuery(tt.query)
-			resultStr, _ := result[tt.wantMatch]
-			assert.NotNil(t, resultStr)
+			assert.NotNil(t, result[tt.wantMatch])
 		})
 	}
 }

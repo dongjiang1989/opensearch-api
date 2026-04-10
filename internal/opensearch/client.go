@@ -392,48 +392,6 @@ func (c *Client) buildQuery(query *SearchQuery) map[string]interface{} {
 	}
 }
 
-// parseSearchResult 解析搜索结果
-func (c *Client) parseSearchResult(result map[string]interface{}) (*SearchResult, error) {
-	hitsSection, ok := result["hits"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid hits section")
-	}
-
-	total, _ := c.parseTotal(hitsSection)
-
-	hitArray, _ := hitsSection["hits"].([]interface{})
-	var hits []SearchHit
-	for _, h := range hitArray {
-		hitMap, _ := h.(map[string]interface{})
-		source, _ := hitMap["_source"].(map[string]interface{})
-		highlight, _ := hitMap["highlight"].(map[string]interface{})
-
-		var score float64
-		if s, ok := hitMap["_score"].(float64); ok {
-			score = s
-		}
-
-		hits = append(hits, SearchHit{
-			ID:        getString(hitMap, "_id"),
-			Score:     score,
-			Source:    source,
-			Highlight: highlight,
-		})
-	}
-
-	took := 0
-	if t, ok := result["took"].(float64); ok {
-		took = int(t)
-	}
-
-	return &SearchResult{
-		Total:    total,
-		Hits:     hits,
-		Took:     took,
-		Metadata: result,
-	}, nil
-}
-
 func (c *Client) parseTotal(hitsSection map[string]interface{}) (int, error) {
 	total := 0
 	switch v := hitsSection["total"].(type) {
