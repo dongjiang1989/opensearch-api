@@ -37,9 +37,9 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 	os.Clearenv()
 
 	// 设置环境变量
-	os.Setenv("OPENSEARCH_SERVER_PORT", "9090")
-	os.Setenv("OPENSEARCH_OPENSEARCH_HOST", "opensearch.example.com")
-	os.Setenv("OPENSEARCH_JWT_SECRET", "test-secret")
+	_ = os.Setenv("OPENSEARCH_SERVER_PORT", "9090")
+	_ = os.Setenv("OPENSEARCH_OPENSEARCH_HOST", "opensearch.example.com")
+	_ = os.Setenv("OPENSEARCH_JWT_SECRET", "test-secret")
 
 	cfg, err := Load()
 	require.NoError(t, err)

@@ -74,15 +74,15 @@ func (s *LocalStorage) Save(ctx context.Context, tenantID, fileID string, reader
 	// 复制内容
 	written, err := io.Copy(file, reader)
 	if err != nil {
-		file.Close()
-		os.Remove(tmpPath)
+		_ = file.Close()
+		_ = os.Remove(tmpPath)
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
-	file.Close()
+	_ = file.Close()
 
 	// 重命名临时文件
 	if err := os.Rename(tmpPath, storagePath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return nil, fmt.Errorf("failed to finalize file: %w", err)
 	}
 

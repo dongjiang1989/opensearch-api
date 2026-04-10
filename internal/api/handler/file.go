@@ -65,7 +65,7 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 		})
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// 读取额外字段
 	description := c.PostForm("description")

@@ -117,7 +117,7 @@ func extractPDFTextSimple(data []byte) string {
 // ExtractTextFromPDF 从 PDF 数据中提取文本
 func ExtractTextFromPDF(data []byte) (string, error) {
 	ctxReader := io.NopCloser(bytes.NewReader(data))
-	defer ctxReader.Close()
+	defer func() { _ = ctxReader.Close() }()
 
 	// 简单实现，生产环境应使用 pdfcpu
 	return extractPDFTextSimple(data), nil

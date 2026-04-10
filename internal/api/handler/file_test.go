@@ -186,7 +186,10 @@ func TestFileHandler_UploadFile_MissingTenant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writer.Close()
+	err = writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("POST", "/upload", body)
