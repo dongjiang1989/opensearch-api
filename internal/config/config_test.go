@@ -12,7 +12,7 @@ func TestLoad_Defaults(t *testing.T) {
 	// 清空环境变量
 	os.Clearenv()
 
-	cfg, err := Load()
+	cfg, err := Load("")
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
@@ -41,7 +41,7 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 	_ = os.Setenv("OPENSEARCH_OPENSEARCH_HOST", "opensearch.example.com")
 	_ = os.Setenv("OPENSEARCH_JWT_SECRET", "test-secret")
 
-	cfg, err := Load()
+	cfg, err := Load("")
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 

@@ -64,15 +64,21 @@ type LogConfig struct {
 }
 
 // Load 加载配置
-func Load() (*Config, error) {
-	// 设置配置名和路径
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
+// configPath: 配置文件路径，如果为空则使用默认路径
+func Load(configPath string) (*Config, error) {
+	// 如果指定了配置文件路径
+	if configPath != "" {
+		viper.SetConfigFile(configPath)
+	} else {
+		// 设置配置名和路径
+		viper.SetConfigName("config")
+		viper.SetConfigType("yaml")
 
-	// 添加配置搜索路径
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("./configs")
-	viper.AddConfigPath("/etc/opensearch-file-api/")
+		// 添加配置搜索路径
+		viper.AddConfigPath(".")
+		viper.AddConfigPath("./configs")
+		viper.AddConfigPath("/etc/opensearch-file-api/")
+	}
 
 	// 设置环境变量前缀
 	viper.SetEnvPrefix("OPENSEARCH")

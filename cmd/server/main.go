@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -22,11 +23,19 @@ import (
 var (
 	Version   = "dev"
 	BuildTime = "unknown"
+	configPath string
 )
 
+func init() {
+	flag.StringVar(&configPath, "config", "", "path to config.yaml file")
+}
+
 func main() {
+	// 解析命令行参数
+	flag.Parse()
+
 	// 加载配置
-	cfg, err := config.Load()
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
