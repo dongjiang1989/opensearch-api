@@ -392,3 +392,172 @@ func (h *SearchHandler) ListFiles(c *gin.Context) {
 		Files:   files,
 	})
 }
+
+// KNNSearchRequest KNN 向量搜索请求
+type KNNSearchRequest struct {
+	Vector     []float32              `json:"vector" binding:"required"`
+	Field      string                 `json:"field"`             // 向量字段名：content_vector, image_vector
+	K          int                    `json:"k"`                 // 返回结果数量
+	Filters    map[string]interface{} `json:"filters,omitempty"` // 过滤条件
+}
+
+// KNNSearchResponse KNN 向量搜索响应
+type KNNSearchResponse struct {
+	Success bool        `json:"success"`
+	Total   int         `json:"total"`
+	Took    int         `json:"took_ms"`
+	Hits    []VectorHit `json:"hits"`
+}
+
+// VectorHit 向量搜索结果项
+type VectorHit struct {
+	ID     string                 `json:"id"`
+	Score  float64                `json:"score"`
+	Source map[string]interface{} `json:"source"`
+}
+
+// KNNSearch KNN 向量搜索接口
+func (h *SearchHandler) KNNSearch(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantID(c)
+	if !ok || tenantID == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Success: false,
+			Error:   "tenant ID is required",
+		})
+		return
+	}
+
+	var req KNNSearchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	// 默认值
+	if req.K <= 0 {
+		req.K = 10
+	}
+	if req.K > 100 {
+		req.K = 100
+	}
+	if req.Field == "" {
+		req.Field = "content_vector" // 默认使用文本向量
+	}
+
+	query := &opensearch.KNNQuery{
+		Vector:  req.Vector,
+		Field:   req.Field,
+		K:       req.K,
+		Filters: req.Filters,
+	}
+
+	result, err := h.osClient.KNNSearch(c.Request.Context(), tenantID, query)
+	if err != nil {
+		h.logger.Error("knn search failed",
+			zap.String("tenant_id", tenantID),
+			zap.Error(err))
+
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	hits := make([]VectorHit, 0, len(result.Hits))
+	for _, hit := range result.Hits {
+		hits = append(hits, VectorHit{
+			ID:     hit.ID,
+			Score:  hit.Score,
+			Source: hit.Source,
+		})
+	}
+
+	c.JSON(http.StatusOK, KNNSearchResponse{
+		Success: true,
+		Total:   result.Total,
+		Took:    result.Took,
+		Hits:    hits,
+	})
+}
+
+// HybridSearchRequest 混合搜索请求
+type HybridSearchRequest struct {
+	Query       string                 `json:"query" binding:"required"`
+	Vector      []float32              `json:"vector"`
+	VectorField string                 `json:"vector_field"`
+	K           int                    `json:"k"`
+	Filters     map[string]interface{} `json:"filters,omitempty"`
+}
+
+// HybridSearch 混合搜索接口（文本 + 向量）
+func (h *SearchHandler) HybridSearch(c *gin.Context) {
+	tenantID, ok := middleware.GetTenantID(c)
+	if !ok || tenantID == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Success: false,
+			Error:   "tenant ID is required",
+		})
+		return
+	}
+
+	var req HybridSearchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	// 默认值
+	if req.K <= 0 {
+		req.K = 10
+	}
+	if req.K > 100 {
+		req.K = 100
+	}
+	if req.VectorField == "" {
+		req.VectorField = "content_vector"
+	}
+
+	query := &opensearch.HybridQuery{
+		Query:       req.Query,
+		Vector:      req.Vector,
+		VectorField: req.VectorField,
+		K:           req.K,
+		Filters:     req.Filters,
+	}
+
+	result, err := h.osClient.HybridSearch(c.Request.Context(), tenantID, query)
+	if err != nil {
+		h.logger.Error("hybrid search failed",
+			zap.String("tenant_id", tenantID),
+			zap.Error(err))
+
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	hits := make([]VectorHit, 0, len(result.Hits))
+	for _, hit := range result.Hits {
+		hits = append(hits, VectorHit{
+			ID:     hit.ID,
+			Score:  hit.Score,
+			Source: hit.Source,
+		})
+	}
+
+	c.JSON(http.StatusOK, KNNSearchResponse{
+		Success: true,
+		Total:   result.Total,
+		Took:    result.Took,
+		Hits:    hits,
+	})
+}

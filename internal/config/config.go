@@ -15,6 +15,18 @@ type Config struct {
 	Storage    StorageConfig
 	JWT        JWTConfig
 	Log        LogConfig
+	Embedding  EmbeddingConfig
+}
+
+// EmbeddingConfig 嵌入服务配置
+type EmbeddingConfig struct {
+	Provider   string `mapstructure:"provider"`    // openai, local, clip
+	Model      string `mapstructure:"model"`       // 模型名称
+	APIKey     string `mapstructure:"api_key"`     // API 密钥
+	APIURL     string `mapstructure:"api_url"`     // API 地址
+	Dimensions int    `mapstructure:"dimensions"`  // 向量维度
+	BatchSize  int    `mapstructure:"batch_size"`  // 批量处理大小
+	Timeout    int    `mapstructure:"timeout"`     // 请求超时 (秒)
 }
 
 // ServerConfig 服务器配置
@@ -135,6 +147,13 @@ func setDefaults() {
 	// Log
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", "json")
+
+	// Embedding
+	viper.SetDefault("embedding.provider", "openai")
+	viper.SetDefault("embedding.model", "text-embedding-3-small")
+	viper.SetDefault("embedding.dimensions", 1536)
+	viper.SetDefault("embedding.batch_size", 10)
+	viper.SetDefault("embedding.timeout", 30)
 }
 
 // Address 返回服务器监听地址

@@ -14,6 +14,7 @@ import (
 
 	"github.com/dongjiang1989/opensearch-api/internal/api/router"
 	"github.com/dongjiang1989/opensearch-api/internal/config"
+	"github.com/dongjiang1989/opensearch-api/internal/embedding"
 	"github.com/dongjiang1989/opensearch-api/internal/indexer"
 	"github.com/dongjiang1989/opensearch-api/internal/opensearch"
 	"github.com/dongjiang1989/opensearch-api/internal/storage"
@@ -108,11 +109,51 @@ func main() {
 		storage.NewDocumentExtractor(),
 	)
 
+	// 初始化嵌入服务
+	var textEmbedder embedding.EmbeddingModel
+	var clipModel embedding.EmbeddingModel
+
+	switch cfg.Embedding.Provider {
+	case "openai":
+		textEmbedder = embedding.NewOpenAIEmbedding(embedding.OpenAIEmbeddingConfig{
+			APIKey:     cfg.Embedding.APIKey,
+			APIURL:     cfg.Embedding.APIURL,
+			Model:      cfg.Embedding.Model,
+			Dimensions: cfg.Embedding.Dimensions,
+			Timeout:    time.Duration(cfg.Embedding.Timeout) * time.Second,
+		})
+		logger.Info("using OpenAI embedding service",
+			zap.String("model", cfg.Embedding.Model),
+			zap.Int("dimensions", cfg.Embedding.Dimensions))
+	case "local":
+		textEmbedder = embedding.NewLocalEmbedding(embedding.LocalEmbeddingConfig{
+			APIURL:     cfg.Embedding.APIURL,
+			Model:      cfg.Embedding.Model,
+			Dimensions: cfg.Embedding.Dimensions,
+			Timeout:    time.Duration(cfg.Embedding.Timeout) * time.Second,
+		})
+		logger.Info("using local embedding service",
+			zap.String("model", cfg.Embedding.Model),
+			zap.String("api_url", cfg.Embedding.APIURL))
+	case "clip":
+		clipModel = embedding.NewCLIPEmbedding(embedding.CLIPEmbeddingConfig{
+			APIURL:     cfg.Embedding.APIURL,
+			Dimensions: cfg.Embedding.Dimensions,
+			Timeout:    time.Duration(cfg.Embedding.Timeout) * time.Second,
+		})
+		logger.Info("using CLIP multimodal embedding service",
+			zap.Int("dimensions", cfg.Embedding.Dimensions))
+	default:
+		logger.Info("no embedding service configured, vector search disabled")
+	}
+
 	// 初始化索引器
 	fileIndexer := indexer.NewIndexer(indexer.IndexerConfig{
 		OpenSearch: osClient,
 		Storage:    fileStorage,
 		Extractor:  extractor,
+		Embedder:   textEmbedder,
+		ClipModel:  clipModel,
 		Logger:     logger,
 	})
 

@@ -10,6 +10,23 @@ type SearchQuery struct {
 	Highlight map[string]interface{} // 高亮配置
 }
 
+// KNNQuery KNN 向量搜索查询参数
+type KNNQuery struct {
+	Vector     []float32              // 查询向量
+	Field      string                 // 向量字段名 (content_vector, image_vector)
+	K          int                    // 返回结果数量
+	Filters    map[string]interface{} // 过滤条件（可选）
+}
+
+// HybridQuery 混合搜索查询参数（结合文本和向量搜索）
+type HybridQuery struct {
+	Query      string                 // 文本查询
+	Vector     []float32              // 查询向量
+	VectorField string                // 向量字段名
+	K          int                    // 返回结果数量
+	Filters    map[string]interface{} // 过滤条件
+}
+
 // SearchResult 搜索结果
 type SearchResult struct {
 	Total    int                      // 总数
