@@ -562,3 +562,170 @@ func mustMarshal(v interface{}) []byte {
 	data, _ := json.Marshal(v)
 	return data
 }
+
+// KNNSearch 执行 KNN 向量搜索
+func (c *Client) KNNSearch(ctx context.Context, tenantID string, query *KNNQuery) (*SearchResult, error) {
+	indexName := c.IndexName(tenantID)
+
+	// 构建 KNN 搜索体
+	body := c.buildKNNSearchBody(query)
+
+	req := &opensearchapi.SearchReq{
+		Indices: []string{indexName},
+		Body:    bytes.NewReader(mustMarshal(body)),
+	}
+
+	res, err := c.client.Search(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to knn search: %w", err)
+	}
+
+	if res.Inspect().Response.IsError() {
+		return nil, fmt.Errorf("knn search failed: %s", res.Inspect().Response.String())
+	}
+
+	// 解析搜索结果
+	hitArray := res.Hits.Hits
+	var hits []SearchHit
+	for _, h := range hitArray {
+		var source map[string]interface{}
+		if len(h.Source) > 0 {
+			if err := json.Unmarshal(h.Source, &source); err != nil {
+				return nil, fmt.Errorf("failed to parse hit source: %w", err)
+			}
+		}
+
+		hits = append(hits, SearchHit{
+			ID:     h.ID,
+			Score:  float64(h.Score),
+			Source: source,
+		})
+	}
+
+	return &SearchResult{
+		Total: res.Hits.Total.Value,
+		Hits:  hits,
+		Took:  res.Took,
+	}, nil
+}
+
+// HybridSearch 执行混合搜索（文本 + 向量）
+func (c *Client) HybridSearch(ctx context.Context, tenantID string, query *HybridQuery) (*SearchResult, error) {
+	indexName := c.IndexName(tenantID)
+
+	// 构建混合搜索体
+	body := c.buildHybridSearchBody(query)
+
+	req := &opensearchapi.SearchReq{
+		Indices: []string{indexName},
+		Body:    bytes.NewReader(mustMarshal(body)),
+	}
+
+	res, err := c.client.Search(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hybrid search: %w", err)
+	}
+
+	if res.Inspect().Response.IsError() {
+		return nil, fmt.Errorf("hybrid search failed: %s", res.Inspect().Response.String())
+	}
+
+	// 解析搜索结果
+	hitArray := res.Hits.Hits
+	var hits []SearchHit
+	for _, h := range hitArray {
+		var source map[string]interface{}
+		if len(h.Source) > 0 {
+			if err := json.Unmarshal(h.Source, &source); err != nil {
+				return nil, fmt.Errorf("failed to parse hit source: %w", err)
+			}
+		}
+
+		hits = append(hits, SearchHit{
+			ID:     h.ID,
+			Score:  float64(h.Score),
+			Source: source,
+		})
+	}
+
+	return &SearchResult{
+		Total: res.Hits.Total.Value,
+		Hits:  hits,
+		Took:  res.Took,
+	}, nil
+}
+
+// buildKNNSearchBody 构建 KNN 搜索请求体
+func (c *Client) buildKNNSearchBody(query *KNNQuery) map[string]interface{} {
+	body := map[string]interface{}{
+		"size": query.K,
+		"knn": map[string]interface{}{
+			query.Field: map[string]interface{}{
+				"vector": query.Vector,
+				"k":      query.K,
+			},
+		},
+	}
+
+	// 添加过滤条件
+	if len(query.Filters) > 0 {
+		filterArray := make([]map[string]interface{}, 0, len(query.Filters))
+		for key, value := range query.Filters {
+			filterArray = append(filterArray, map[string]interface{}{
+				"term": map[string]interface{}{
+					key: value,
+				},
+			})
+		}
+		body["knn"].(map[string]interface{})["filter"] = filterArray
+	}
+
+	return body
+}
+
+// buildHybridSearchBody 构建混合搜索请求体（结合文本和向量搜索）
+func (c *Client) buildHybridSearchBody(query *HybridQuery) map[string]interface{} {
+	// 使用 bool 查询结合文本匹配和向量相似度
+	body := map[string]interface{}{
+		"size": query.K,
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": []map[string]interface{}{
+					{
+						"multi_match": map[string]interface{}{
+							"query":  query.Query,
+							"fields": []string{"content", "filename", "description", "tags"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// 使用 rescore 进行向量重排序
+	if len(query.Vector) > 0 {
+		body["knn"] = map[string]interface{}{
+			query.VectorField: map[string]interface{}{
+				"vector": query.Vector,
+				"k":      query.K * 2, // 获取更多结果用于重排序
+			},
+		}
+	}
+
+	// 添加过滤条件
+	if len(query.Filters) > 0 {
+		filterArray := make([]map[string]interface{}, 0, len(query.Filters))
+		for key, value := range query.Filters {
+			filterArray = append(filterArray, map[string]interface{}{
+				"term": map[string]interface{}{
+					key: value,
+				},
+			})
+		}
+		if knn, ok := body["knn"].(map[string]interface{}); ok {
+			knn["filter"] = filterArray
+		}
+	}
+
+	return body
+}

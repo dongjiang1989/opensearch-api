@@ -39,8 +39,10 @@ type FileMetadata struct {
 
 // ExtractedContent 提取的文件内容
 type ExtractedContent struct {
-	Text     string                 `json:"text"`
-	Metadata map[string]interface{} `json:"metadata"`
+	Text          string                 `json:"text"`
+	Embedding     []float32              `json:"embedding,omitempty"`      // 文本嵌入向量
+	ImageEmbedding []float32             `json:"image_embedding,omitempty"` // 图片嵌入向量（CLIP）
+	Metadata      map[string]interface{} `json:"metadata"`
 }
 
 // Storage 存储接口

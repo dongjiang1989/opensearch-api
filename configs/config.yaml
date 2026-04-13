@@ -34,3 +34,12 @@ jwt:
 log:
   level: "debug"
   format: "json"  # json 或 console
+
+embedding:
+  provider: "openai"  # openai, local, clip
+  model: "text-embedding-3-small"  # 或 all-minilm (local), clip (multimodal)
+  api_key: "${OPENAI_API_KEY}"  # OpenAI API 密钥，使用本地服务时可留空
+  api_url: "https://api.openai.com/v1/embeddings"  # 或本地服务地址如 http://localhost:11434
+  dimensions: 1536  # 向量维度
+  batch_size: 10  # 批量处理大小
+  timeout: 30  # 请求超时 (秒)

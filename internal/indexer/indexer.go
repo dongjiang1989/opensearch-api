@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/dongjiang1989/opensearch-api/internal/embedding"
 	"github.com/dongjiang1989/opensearch-api/internal/opensearch"
 	"github.com/dongjiang1989/opensearch-api/internal/storage"
 )
@@ -20,6 +21,8 @@ type OpenSearchClient interface {
 	GetDocument(ctx context.Context, tenantID, docID string) (map[string]interface{}, error)
 	DeleteDocument(ctx context.Context, tenantID, docID string) error
 	Search(ctx context.Context, tenantID string, query *opensearch.SearchQuery) (*opensearch.SearchResult, error)
+	KNNSearch(ctx context.Context, tenantID string, query *opensearch.KNNQuery) (*opensearch.SearchResult, error)
+	HybridSearch(ctx context.Context, tenantID string, query *opensearch.HybridQuery) (*opensearch.SearchResult, error)
 	IndexName(tenantID string) string
 	Health(ctx context.Context) (map[string]interface{}, error)
 	Ping(ctx context.Context) error
@@ -32,6 +35,8 @@ type Indexer struct {
 	osClient    OpenSearchClient
 	storage     storage.Storage
 	extractor   storage.ContentExtractor
+	embedder    embedding.EmbeddingModel
+	clipModel   embedding.EmbeddingModel
 	logger      *zap.Logger
 }
 
@@ -40,16 +45,20 @@ type IndexerConfig struct {
 	OpenSearch OpenSearchClient
 	Storage    storage.Storage
 	Extractor  storage.ContentExtractor
+	Embedder   embedding.EmbeddingModel      // 文本嵌入模型
+	ClipModel  embedding.EmbeddingModel      // CLIP 多模态模型（可选）
 	Logger     *zap.Logger
 }
 
 // NewIndexer 创建文件索引器
 func NewIndexer(cfg IndexerConfig) *Indexer {
 	return &Indexer{
-		osClient:  cfg.OpenSearch,
-		storage:   cfg.Storage,
-		extractor: cfg.Extractor,
-		logger:    cfg.Logger,
+		osClient:    cfg.OpenSearch,
+		storage:     cfg.Storage,
+		extractor:   cfg.Extractor,
+		embedder:    cfg.Embedder,
+		clipModel:   cfg.ClipModel,
+		logger:      cfg.Logger,
 	}
 }
 
@@ -115,6 +124,36 @@ func (i *Indexer) IndexFile(ctx context.Context, tenantID, filename string, read
 		}
 	}
 
+	// 生成文本嵌入向量
+	if i.embedder != nil && extracted.Text != "" {
+		embedding, err := i.embedder.Generate(ctx, extracted.Text)
+		if err != nil {
+			i.logger.Warn("failed to generate text embedding",
+				zap.String("file_id", fileID),
+				zap.Error(err))
+		} else {
+			extracted.Embedding = embedding
+			i.logger.Debug("text embedding generated",
+				zap.String("file_id", fileID),
+				zap.Int("dimensions", len(embedding)))
+		}
+	}
+
+	// 生成图片嵌入向量（使用 CLIP）
+	if i.clipModel != nil && fileType == storage.FileTypeImage {
+		clipEmbedding, err := i.clipModel.(*embedding.CLIPEmbedding).GenerateImage(ctx, data, contentType)
+		if err != nil {
+			i.logger.Warn("failed to generate image embedding",
+				zap.String("file_id", fileID),
+				zap.Error(err))
+		} else {
+			extracted.ImageEmbedding = clipEmbedding
+			i.logger.Debug("image embedding generated",
+				zap.String("file_id", fileID),
+				zap.Int("dimensions", len(clipEmbedding)))
+		}
+	}
+
 	// 构建索引文档
 	doc := i.buildIndexDocument(tenantID, fileID, filename, contentType, fileType, metadata, extracted)
 
@@ -166,6 +205,16 @@ func (i *Indexer) buildIndexDocument(
 		"tags":         fileMetadata.Tags,
 		"created_at":   now.Format(time.RFC3339),
 		"updated_at":   now.Format(time.RFC3339),
+	}
+
+	// 添加文本嵌入向量
+	if extracted.Embedding != nil && len(extracted.Embedding) > 0 {
+		doc["content_vector"] = extracted.Embedding
+	}
+
+	// 添加图片嵌入向量
+	if extracted.ImageEmbedding != nil && len(extracted.ImageEmbedding) > 0 {
+		doc["image_vector"] = extracted.ImageEmbedding
 	}
 
 	// 添加提取的元数据

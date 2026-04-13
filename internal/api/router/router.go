@@ -107,6 +107,10 @@ func Setup(cfg Config) *gin.Engine {
 			search.POST("", searchHandler.Search)
 			search.POST("/aggregate", searchHandler.Aggregate)
 			search.GET("/count", searchHandler.Count)
+
+			// 向量搜索 API
+			search.POST("/knn", searchHandler.KNNSearch)
+			search.POST("/hybrid", searchHandler.HybridSearch)
 		}
 	}
 
