@@ -208,12 +208,12 @@ func (i *Indexer) buildIndexDocument(
 	}
 
 	// 添加文本嵌入向量
-	if extracted.Embedding != nil && len(extracted.Embedding) > 0 {
+	if len(extracted.Embedding) > 0 {
 		doc["content_vector"] = extracted.Embedding
 	}
 
 	// 添加图片嵌入向量
-	if extracted.ImageEmbedding != nil && len(extracted.ImageEmbedding) > 0 {
+	if len(extracted.ImageEmbedding) > 0 {
 		doc["image_vector"] = extracted.ImageEmbedding
 	}
 
