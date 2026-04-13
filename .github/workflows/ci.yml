@@ -9,6 +9,7 @@ on:
 env:
   GO_VERSION: '1.26'
   IMAGE_NAME: opensearch-file-api
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   # 代码质量检查
@@ -175,6 +176,7 @@ jobs:
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ env.PLATFORMS }}
           build-args: |
             VERSION=${{ github.sha }}
             BUILD_TIME=${{ github.event.head_commit.timestamp }}
