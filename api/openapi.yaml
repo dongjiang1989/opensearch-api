@@ -237,6 +237,90 @@ components:
           items:
             $ref: '#/components/schemas/SearchHit'
 
+    # 向量搜索
+    KNNSearchRequest:
+      type: object
+      required:
+        - vector
+      properties:
+        vector:
+          type: array
+          items:
+            type: number
+            format: float
+          description: 向量数据
+          minItems: 512
+          maxItems: 1536
+        field:
+          type: string
+          description: 向量字段名
+          default: content_vector
+          enum: [content_vector, image_vector]
+        k:
+          type: integer
+          description: 返回结果数量
+          default: 10
+          minimum: 1
+          maximum: 100
+        filters:
+          type: object
+          description: 过滤条件
+
+    HybridSearchRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: 文本搜索关键词
+        vector:
+          type: array
+          items:
+            type: number
+            format: float
+          description: 向量数据（可选，用于混合搜索）
+          minItems: 512
+          maxItems: 1536
+        vector_field:
+          type: string
+          description: 向量字段名
+          default: content_vector
+          enum: [content_vector, image_vector]
+        k:
+          type: integer
+          description: 返回结果数量
+          default: 10
+          minimum: 1
+          maximum: 100
+        filters:
+          type: object
+          description: 过滤条件
+
+    VectorHit:
+      type: object
+      properties:
+        id:
+          type: string
+        score:
+          type: number
+        source:
+          type: object
+
+    KNNSearchResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        total:
+          type: integer
+        took_ms:
+          type: integer
+        hits:
+          type: array
+          items:
+            $ref: '#/components/schemas/VectorHit'
+
     # 聚合
     AggregateRequest:
       type: object
@@ -288,6 +372,8 @@ components:
       description: 文件管理接口，包括文件上传、下载、删除和元数据查询
     - name: Search
       description: 搜索接口，支持全文搜索、聚合查询和文件数量统计
+    - name: Vector Search
+      description: 向量搜索接口，支持 KNN 向量搜索和文本 + 向量混合搜索
     - name: Metrics
       description: Prometheus 格式的服务监控指标
 
@@ -670,6 +756,88 @@ paths:
                     type: boolean
                   count:
                     type: integer
+
+  /search/knn:
+    post:
+      summary: KNN 向量搜索
+      description: |
+        使用向量进行 K 近邻搜索，支持语义搜索和跨模态搜索。
+
+        ## 向量字段说明
+
+        - `content_vector`: 文本向量（1536 维），用于文本语义搜索
+        - `image_vector`: 图像向量（512 维），用于 CLIP 图像向量搜索
+
+        ## 使用场景
+
+        - 文本语义搜索：使用文本嵌入向量搜索相似文档
+        - 图像搜索：使用 CLIP 图像向量搜索相似图片
+        - 跨模态搜索：使用文本向量搜索图片，或使用图片向量搜索文本
+      tags:
+        - Vector Search
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KNNSearchRequest'
+      responses:
+        '200':
+          description: 向量搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KNNSearchResponse'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /search/hybrid:
+    post:
+      summary: 混合搜索（文本 + 向量）
+      description: |
+        结合文本关键词和向量进行混合搜索，同时匹配文本相关性和向量相似性。
+
+        ## 搜索模式
+
+        - 仅文本搜索：只提供 query 参数
+        - 仅向量搜索：只提供 vector 参数（建议使用 /search/knn 端点）
+        - 混合搜索：同时提供 query 和 vector 参数
+
+        ## 向量字段说明
+
+        - `content_vector`: 文本向量（1536 维）
+        - `image_vector`: 图像向量（512 维）
+      tags:
+        - Vector Search
+      security:
+        - bearerAuth: []
+        - tenantId: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HybridSearchRequest'
+      responses:
+        '200':
+          description: 混合搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KNNSearchResponse'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /ping:
     get:
