@@ -242,6 +242,136 @@ func (m *MockClient) BulkIndex(ctx context.Context, tenantID string, docs []Bulk
 	return nil
 }
 
+// KNNSearch KNN 向量搜索
+func (m *MockClient) KNNSearch(ctx context.Context, tenantID string, query *KNNQuery) (*SearchResult, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	indexName := m.IndexName(tenantID)
+	docs, exists := m.documents[indexName]
+	if !exists {
+		return &SearchResult{
+			Total: 0,
+			Hits:  []SearchHit{},
+			Took:  0,
+		}, nil
+	}
+
+	var hits []SearchHit
+	for docID, doc := range docs {
+		docMap, ok := doc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		// 简单过滤
+		if len(query.Filters) > 0 {
+			match := true
+			for key, value := range query.Filters {
+				if docMap[key] != value {
+					match = false
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+
+		hits = append(hits, SearchHit{
+			ID:     docID,
+			Score:  0.95, // 模拟相似度分数
+			Source: docMap,
+		})
+	}
+
+	// 限制返回数量
+	k := query.K
+	if k <= 0 {
+		k = 10
+	}
+	if len(hits) > k {
+		hits = hits[:k]
+	}
+
+	return &SearchResult{
+		Total: len(hits),
+		Hits:  hits,
+		Took:  1,
+	}, nil
+}
+
+// HybridSearch 混合搜索
+func (m *MockClient) HybridSearch(ctx context.Context, tenantID string, query *HybridQuery) (*SearchResult, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	indexName := m.IndexName(tenantID)
+	docs, exists := m.documents[indexName]
+	if !exists {
+		return &SearchResult{
+			Total: 0,
+			Hits:  []SearchHit{},
+			Took:  0,
+		}, nil
+	}
+
+	var hits []SearchHit
+	for docID, doc := range docs {
+		docMap, ok := doc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		// 简单文本匹配
+		if query.Query != "" {
+			found := false
+			for _, value := range docMap {
+				if str, ok := value.(string); ok && contains(str, query.Query) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
+		// 过滤
+		if len(query.Filters) > 0 {
+			match := true
+			for key, value := range query.Filters {
+				if docMap[key] != value {
+					match = false
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+
+		hits = append(hits, SearchHit{
+			ID:     docID,
+			Score:  0.9,
+			Source: docMap,
+		})
+	}
+
+	// 限制返回数量
+	k := query.K
+	if k <= 0 {
+		k = 10
+	}
+	if len(hits) > k {
+		hits = hits[:k]
+	}
+
+	return &SearchResult{
+		Total: len(hits),
+		Hits:  hits,
+		Took:  1,
+	}, nil
+}
+
 // contains 辅助函数
 func contains(s, substr string) bool {
 	if len(s) < len(substr) {

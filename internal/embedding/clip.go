@@ -55,6 +55,7 @@ func NewCLIPEmbedding(cfg CLIPEmbeddingConfig) *CLIPEmbedding {
 
 	return &CLIPEmbedding{
 		apiURL: cfg.APIURL,
+		dimensions: cfg.Dimensions,
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
 		},

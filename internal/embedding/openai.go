@@ -70,6 +70,7 @@ func NewOpenAIEmbedding(cfg OpenAIEmbeddingConfig) *OpenAIEmbedding {
 		apiKey: cfg.APIKey,
 		apiURL: cfg.APIURL,
 		model:  cfg.Model,
+		dimensions: cfg.Dimensions,
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
 		},
@@ -141,10 +142,6 @@ func (e *OpenAIEmbedding) Generate(ctx context.Context, content string) ([]float
 
 // GenerateBatch 批量生成嵌入向量
 func (e *OpenAIEmbedding) GenerateBatch(ctx context.Context, contents []string) ([][]float32, error) {
-	reqBody := openAIRequest{
-		Model: e.model,
-	}
-
 	// 对于批量请求，使用 inputs 数组
 	body, err := json.Marshal(map[string]interface{}{
 		"input":      contents,
