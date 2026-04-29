@@ -318,8 +318,8 @@ func (h *FileHandler) ListFiles(c *gin.Context) {
 	size := c.DefaultQuery("size", "20")
 
 	var pageNum, sizeNum int
-	fmt.Sscanf(page, "%d", &pageNum)
-	fmt.Sscanf(size, "%d", &sizeNum)
+	_, _ = fmt.Sscanf(page, "%d", &pageNum)
+	_, _ = fmt.Sscanf(size, "%d", &sizeNum)
 
 	if pageNum < 1 {
 		pageNum = 1

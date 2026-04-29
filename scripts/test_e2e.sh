@@ -19,6 +19,13 @@ curl_json() {
   BODY=$(cat "$TMPF")
 }
 
+# ---- Step 0: Cleanup from previous runs ----
+section "0. Cleaning up from previous runs"
+for T in tenant-a tenant-b; do
+  curl_json -X DELETE "$BASE_URL/admin/tenants/$T/hard"
+  echo "  Cleaned $T (HTTP $CODE)"
+done
+
 # ---- Step 1: Create test files ----
 section "1. Creating test files"
 

@@ -706,16 +706,32 @@ func (c *Client) buildKNNSearchBody(query *KNNQuery) map[string]interface{} {
 
 // buildHybridSearchBody 构建混合搜索请求体（结合文本和向量搜索）
 func (c *Client) buildHybridSearchBody(query *HybridQuery) map[string]interface{} {
-	// 当有向量时，使用 KNN 搜索（NMSLIB 不支持 filter，所以不做过滤）
+	// 当有向量时，使用 KNN 搜索
 	if len(query.Vector) > 0 {
+		knnField := map[string]interface{}{
+			"vector": query.Vector,
+			"k":      query.K,
+		}
+		if len(query.Filters) > 0 {
+			filterArray := make([]map[string]interface{}, 0, len(query.Filters))
+			for key, value := range query.Filters {
+				filterArray = append(filterArray, map[string]interface{}{
+					"term": map[string]interface{}{
+						key: value,
+					},
+				})
+			}
+			knnField["filter"] = map[string]interface{}{
+				"bool": map[string]interface{}{
+					"filter": filterArray,
+				},
+			}
+		}
 		return map[string]interface{}{
 			"size": query.K,
 			"query": map[string]interface{}{
 				"knn": map[string]interface{}{
-					query.VectorField: map[string]interface{}{
-						"vector": query.Vector,
-						"k":      query.K,
-					},
+					query.VectorField: knnField,
 				},
 			},
 		}
