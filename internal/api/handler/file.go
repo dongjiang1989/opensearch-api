@@ -45,6 +45,20 @@ type FileUploadResponse struct {
 }
 
 // UploadFile 上传文件
+// @Summary 上传文件
+// @Description 上传文件并建立索引，支持 PDF、图片、文档等格式
+// @Tags File
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "文件"
+// @Param description formData string false "文件描述"
+// @Param tags formData []string false "文件标签"
+// @Success 200 {object} FileUploadResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Security BearerAuth
+// @Security X-Tenant-ID
+// @Router /files [post]
 func (h *FileHandler) UploadFile(c *gin.Context) {
 	// 获取租户 ID
 	tenantID, ok := middleware.GetTenantID(c)
@@ -117,6 +131,17 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 }
 
 // GetFile 获取文件
+// @Summary 下载文件
+// @Description 根据文件 ID 下载文件
+// @Tags File
+// @Produce octet-stream
+// @Param file_id path string true "文件 ID"
+// @Success 200 {file} binary "文件内容"
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Security BearerAuth
+// @Security X-Tenant-ID
+// @Router /files/{file_id} [get]
 func (h *FileHandler) GetFile(c *gin.Context) {
 	tenantID, ok := middleware.GetTenantID(c)
 	if !ok || tenantID == "" {
@@ -169,6 +194,17 @@ func (h *FileHandler) GetFile(c *gin.Context) {
 }
 
 // GetFileMetadata 获取文件元数据
+// @Summary 获取文件元数据
+// @Description 根据文件 ID 获取文件元数据
+// @Tags File
+// @Produce json
+// @Param file_id path string true "文件 ID"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Security BearerAuth
+// @Security X-Tenant-ID
+// @Router /files/{file_id}/metadata [get]
 func (h *FileHandler) GetFileMetadata(c *gin.Context) {
 	tenantID, ok := middleware.GetTenantID(c)
 	if !ok || tenantID == "" {
@@ -205,6 +241,17 @@ func (h *FileHandler) GetFileMetadata(c *gin.Context) {
 }
 
 // DeleteFile 删除文件
+// @Summary 删除文件
+// @Description 根据文件 ID 删除文件
+// @Tags File
+// @Produce json
+// @Param file_id path string true "文件 ID"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Security BearerAuth
+// @Security X-Tenant-ID
+// @Router /files/{file_id} [delete]
 func (h *FileHandler) DeleteFile(c *gin.Context) {
 	tenantID, ok := middleware.GetTenantID(c)
 	if !ok || tenantID == "" {
@@ -244,6 +291,17 @@ func (h *FileHandler) DeleteFile(c *gin.Context) {
 }
 
 // ListFiles 列出文件
+// @Summary 列出文件
+// @Description 获取当前租户下的文件列表
+// @Tags File
+// @Produce json
+// @Param page query int false "页码" default(1)
+// @Param size query int false "每页数量" default(20)
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Security BearerAuth
+// @Security X-Tenant-ID
+// @Router /files [get]
 func (h *FileHandler) ListFiles(c *gin.Context) {
 	tenantID, ok := middleware.GetTenantID(c)
 	if !ok || tenantID == "" {

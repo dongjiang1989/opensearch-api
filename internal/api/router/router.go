@@ -120,7 +120,6 @@ func Setup(cfg Config) *gin.Engine {
 // TokenRequest Token 生成请求
 type TokenRequest struct {
 	TenantID string `json:"tenant_id" binding:"required"`
-	UserID   string `json:"user_id" binding:"required"`
 	Role     string `json:"role"`
 }
 
@@ -146,6 +145,15 @@ type SuccessResponse struct {
 }
 
 // GenerateTokenHandler 生成 Token（用于测试）
+// @Summary 生成 JWT Token（测试用）
+// @Description 生成 JWT Token 用于测试，生产环境应使用独立的认证服务
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body TokenRequest true "Token 生成请求"
+// @Success 200 {object} TokenResponse
+// @Failure 400 {object} ErrorResponse
+// @Router /token [post]
 func GenerateTokenHandler(c *gin.Context) {
 	var req TokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -161,7 +169,6 @@ func GenerateTokenHandler(c *gin.Context) {
 		"change-this-secret-key",
 		"opensearch-file-api",
 		req.TenantID,
-		req.UserID,
 		req.Role,
 		24*time.Hour,
 	)

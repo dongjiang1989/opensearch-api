@@ -40,6 +40,13 @@ type OpenSearchHealth struct {
 }
 
 // Check 健康检查接口
+// @Summary 健康检查
+// @Description 检查服务及 OpenSearch 连接状态
+// @Tags Health
+// @Produce json
+// @Success 200 {object} HealthResponse
+// @Failure 503 {object} HealthResponse
+// @Router /health [get]
 func (h *HealthHandler) Check(c *gin.Context) {
 	response := HealthResponse{
 		Success: true,
@@ -83,6 +90,13 @@ func (h *HealthHandler) Check(c *gin.Context) {
 }
 
 // Ping Ping 接口
+// @Summary 服务 Ping 检查（轻量级健康检查）
+// @Description 轻量级 Ping 检查，不依赖 OpenSearch
+// @Tags Health
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 503 {object} ErrorResponse
+// @Router /ping [get]
 func (h *HealthHandler) Ping(c *gin.Context) {
 	err := h.osClient.Ping(c.Request.Context())
 	if err != nil {

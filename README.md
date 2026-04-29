@@ -17,16 +17,17 @@
 ### 使用 Docker Compose
 
 ```bash
-# 启动服务
-cd deployments/docker
-docker-compose up -d
+# 启动服务（OpenSearch + MinIO + API）
+docker compose -f deployments/docker/docker-compose.yml up -d
 
 # 查看日志
-docker-compose logs -f opensearch-file-api
+docker compose -f deployments/docker/docker-compose.yml logs -f opensearch-file-api
 
 # 停止服务
-docker-compose down
+docker compose -f deployments/docker/docker-compose.yml down
 ```
+
+> 注意：服务端口映射已调整为 `18080:8080`，API 地址为 `http://localhost:18080`
 
 ### 本地开发
 
@@ -49,11 +50,10 @@ make build
 获取 JWT Token:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/token \
+curl -X POST http://localhost:18080/api/v1/token \
   -H "Content-Type: application/json" \
   -d '{
     "tenant_id": "tenant-1",
-    "user_id": "user-1",
     "role": "admin"
   }'
 ```
@@ -61,7 +61,7 @@ curl -X POST http://localhost:8080/api/v1/token \
 ### 文件上传
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/files \
+curl -X POST http://localhost:18080/api/v1/files \
   -H "Authorization: Bearer <token>" \
   -H "X-Tenant-ID: tenant-1" \
   -F "file=@document.pdf" \
@@ -74,12 +74,12 @@ curl -X POST http://localhost:8080/api/v1/files \
 
 ```bash
 # GET 方式搜索
-curl -X GET "http://localhost:8080/api/v1/search?q=合同&file_type=pdf" \
+curl -X GET "http://localhost:18080/api/v1/search?q=合同&file_type=pdf" \
   -H "Authorization: Bearer <token>" \
   -H "X-Tenant-ID: tenant-1"
 
 # POST 方式高级搜索
-curl -X POST http://localhost:8080/api/v1/search \
+curl -X POST http://localhost:18080/api/v1/search \
   -H "Authorization: Bearer <token>" \
   -H "X-Tenant-ID: tenant-1" \
   -H "Content-Type: application/json" \
@@ -93,10 +93,62 @@ curl -X POST http://localhost:8080/api/v1/search \
   }'
 ```
 
+### KNN 向量搜索
+
+通过向量进行相似度搜索，适用于语义搜索、图片相似度检索等场景：
+
+```bash
+curl -X POST http://localhost:18080/api/v1/search/knn \
+  -H "Authorization: Bearer <token>" \
+  -H "X-Tenant-ID: tenant-1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vector": [0.1, 0.2, 0.3, ...],
+    "field": "content_vector",
+    "k": 10,
+    "filters": {
+      "file_type": "pdf"
+    }
+  }'
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `vector` | array | 是 | 查询向量 |
+| `field` | string | 否 | 向量字段名，默认 `content_vector` |
+| `k` | int | 否 | 返回结果数量，默认 10，最大 100 |
+| `filters` | object | 否 | 过滤条件 |
+
+### 混合搜索（文本 + 向量）
+
+结合全文搜索和向量搜索，获得更精准的搜索结果：
+
+```bash
+curl -X POST http://localhost:18080/api/v1/search/hybrid \
+  -H "Authorization: Bearer <token>" \
+  -H "X-Tenant-ID: tenant-1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "合同条款",
+    "vector": [0.1, 0.2, 0.3, ...],
+    "vector_field": "content_vector",
+    "k": 10,
+    "filters": {}
+  }'
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `query` | string | 是 | 文本查询关键词 |
+| `vector` | array | 否 | 查询向量 |
+| `vector_field` | string | 否 | 向量字段名，默认 `content_vector` |
+| `k` | int | 否 | 返回结果数量，默认 10，最大 100 |
+| `filters` | object | 否 | 过滤条件 |
+
 ### 文件列表
 
 ```bash
-curl -X GET "http://localhost:8080/api/v1/files?page=1&size=20" \
+curl -X GET "http://localhost:18080/api/v1/files?page=1&size=20" \
   -H "Authorization: Bearer <token>" \
   -H "X-Tenant-ID: tenant-1"
 ```
@@ -104,7 +156,7 @@ curl -X GET "http://localhost:8080/api/v1/files?page=1&size=20" \
 ### 删除文件
 
 ```bash
-curl -X DELETE http://localhost:8080/api/v1/files/<file_id> \
+curl -X DELETE http://localhost:18080/api/v1/files/<file_id> \
   -H "Authorization: Bearer <token>" \
   -H "X-Tenant-ID: tenant-1"
 ```
@@ -113,17 +165,17 @@ curl -X DELETE http://localhost:8080/api/v1/files/<file_id> \
 
 ```bash
 # 健康检查（检查 OpenSearch 连接）
-curl http://localhost:8080/health
+curl http://localhost:18080/health
 
 # Ping 检查（轻量级）
-curl http://localhost:8080/ping
+curl http://localhost:18080/ping
 ```
 
 ### 监控指标
 
 ```bash
 # 获取 Prometheus 格式指标
-curl http://localhost:8080/metrics
+curl http://localhost:18080/metrics
 ```
 
 可用的指标包括：
@@ -139,7 +191,7 @@ curl http://localhost:8080/metrics
 
 ```bash
 # 创建租户
-curl -X POST http://localhost:8080/api/v1/admin/tenants \
+curl -X POST http://localhost:18080/api/v1/admin/tenants \
   -H "Content-Type: application/json" \
   -d '{
     "id": "tenant-1",
@@ -148,10 +200,24 @@ curl -X POST http://localhost:8080/api/v1/admin/tenants \
   }'
 
 # 获取租户信息
-curl -X GET http://localhost:8080/api/v1/admin/tenants/tenant-1
+curl -X GET http://localhost:18080/api/v1/admin/tenants/tenant-1
 
 # 列出租户
-curl -X GET http://localhost:8080/api/v1/admin/tenants
+curl -X GET http://localhost:18080/api/v1/admin/tenants
+
+# 更新租户
+curl -X PUT http://localhost:18080/api/v1/admin/tenants/tenant-1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "新租户名称",
+    "description": "更新后的描述"
+  }'
+
+# 删除租户（软删除，标记为已删除但保留数据）
+curl -X DELETE http://localhost:18080/api/v1/admin/tenants/tenant-1
+
+# 彻底删除租户（不可恢复）
+curl -X DELETE http://localhost:18080/api/v1/admin/tenants/tenant-1/hard
 ```
 
 ## 配置
@@ -322,13 +388,18 @@ export OPENSEARCH_STORAGE_IMAGE_OCR_LANG=chi_sim
 | `/metrics` | GET | 否 | Prometheus 监控指标 |
 | `/api/v1/token` | POST | 否 | 生成 JWT Token（测试用） |
 | `/api/v1/admin/tenants` | POST/GET | 是 | 创建/列出租户 |
-| `/api/v1/admin/tenants/:id` | GET/PUT/DELETE | 是 | 获取/更新/删除租户 |
+| `/api/v1/admin/tenants/:id` | GET | 是 | 获取租户 |
+| `/api/v1/admin/tenants/:id` | PUT | 是 | 更新租户 |
+| `/api/v1/admin/tenants/:id` | DELETE | 是 | 删除租户（软删除） |
+| `/api/v1/admin/tenants/:id/hard` | DELETE | 是 | 彻底删除租户 |
 | `/api/v1/files` | POST/GET | 是 | 上传文件/列出文件 |
 | `/api/v1/files/:id` | GET/DELETE | 是 | 下载文件/删除文件 |
 | `/api/v1/files/:id/metadata` | GET | 是 | 获取文件元数据 |
 | `/api/v1/search` | GET/POST | 是 | 搜索文件 |
 | `/api/v1/search/aggregate` | POST | 是 | 聚合查询 |
 | `/api/v1/search/count` | GET | 是 | 统计文件数量 |
+| `/api/v1/search/knn` | POST | 是 | KNN 向量搜索 |
+| `/api/v1/search/hybrid` | POST | 是 | 混合搜索（文本 + 向量） |
 
 ## License
 

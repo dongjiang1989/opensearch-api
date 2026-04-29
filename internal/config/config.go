@@ -139,6 +139,18 @@ func setDefaults() {
 	viper.SetDefault("storage.image_ocr", false)
 	viper.SetDefault("storage.image_ocr_lang", "eng")
 
+	// Storage - S3 (bind env explicitly for nested keys)
+	_ = viper.BindEnv("storage.s3_bucket", "OPENSEARCH_STORAGE_S3BUCKET")
+	_ = viper.BindEnv("storage.s3_bucket", "OPENSEARCH_STORAGE_S3_BUCKET")
+	_ = viper.BindEnv("storage.s3_region", "OPENSEARCH_STORAGE_S3REGION")
+	_ = viper.BindEnv("storage.s3_region", "OPENSEARCH_STORAGE_S3_REGION")
+	_ = viper.BindEnv("storage.s3_endpoint", "OPENSEARCH_STORAGE_S3ENDPOINT")
+	_ = viper.BindEnv("storage.s3_endpoint", "OPENSEARCH_STORAGE_S3_ENDPOINT")
+	_ = viper.BindEnv("storage.s3_key_id", "OPENSEARCH_STORAGE_S3KEYID")
+	_ = viper.BindEnv("storage.s3_key_id", "OPENSEARCH_STORAGE_S3_KEY_ID")
+	_ = viper.BindEnv("storage.s3_secret", "OPENSEARCH_STORAGE_S3SECRET")
+	_ = viper.BindEnv("storage.s3_secret", "OPENSEARCH_STORAGE_S3_SECRET")
+
 	// JWT
 	viper.SetDefault("jwt.secret", "change-this-secret-key")
 	viper.SetDefault("jwt.issuer", "opensearch-file-api")

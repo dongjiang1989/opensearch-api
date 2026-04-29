@@ -28,6 +28,12 @@ func NewMetricsHandler() *MetricsHandler {
 }
 
 // ServeHTTP implements http.Handler for Prometheus metrics
+// @Summary Prometheus Metrics
+// @Description 返回 Prometheus 格式的服务监控指标
+// @Tags Metrics
+// @Produce text/plain
+// @Success 200 {string} string "Prometheus metrics"
+// @Router /metrics [get]
 func (h *MetricsHandler) ServeHTTP(c *gin.Context) {
 	handler := promhttp.HandlerFor(h.registry, promhttp.HandlerOpts{
 		Registry: h.registry,

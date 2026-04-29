@@ -1,4 +1,4 @@
-.PHONY: build test run lint docker-build docker-compose-up helm-lint clean
+.PHONY: build test run lint docker-build docker-compose-up helm-lint clean swag
 
 # Variables
 APP_NAME := opensearch-file-api
@@ -59,6 +59,10 @@ helm-lint:
 helm-template:
 	helm template test deployments/helm/$(APP_NAME) --values deployments/helm/$(APP_NAME)/values.yaml
 
+# Swagger docs
+swag:
+	swag init -g cmd/server/main.go -o api --parseDependency --parseInternal --outputTypes yaml
+
 # Install dependencies
 deps:
 	go mod download
@@ -83,4 +87,5 @@ help:
 	@echo "  docker-compose-up - Start Docker Compose"
 	@echo "  docker-compose-down - Stop Docker Compose"
 	@echo "  helm-lint        - Lint Helm chart"
+	@echo "  swag               - Generate Swagger API docs (YAML)"
 	@echo "  clean            - Clean build artifacts"

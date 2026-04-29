@@ -1,0 +1,875 @@
+basePath: /api/v1
+definitions:
+  internal_api_handler.AggregateRequest:
+    properties:
+      field:
+        type: string
+    required:
+    - field
+    type: object
+  internal_api_handler.AggregateResponse:
+    properties:
+      buckets:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
+      field:
+        type: string
+      success:
+        type: boolean
+    type: object
+  internal_api_handler.CountResponse:
+    properties:
+      count:
+        type: integer
+      success:
+        type: boolean
+    type: object
+  internal_api_handler.CreateTenantRequest:
+    properties:
+      description:
+        type: string
+      id:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      name:
+        type: string
+    required:
+    - id
+    - name
+    type: object
+  internal_api_handler.ErrorResponse:
+    properties:
+      code:
+        type: integer
+      error:
+        type: string
+      success:
+        type: boolean
+    type: object
+  internal_api_handler.FileUploadResponse:
+    properties:
+      content_type:
+        type: string
+      file_id:
+        type: string
+      file_size:
+        type: integer
+      filename:
+        type: string
+      indexed_at:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      success:
+        type: boolean
+    type: object
+  internal_api_handler.HealthResponse:
+    properties:
+      opensearch:
+        $ref: '#/definitions/internal_api_handler.OpenSearchHealth'
+      status:
+        type: string
+      success:
+        type: boolean
+      version:
+        additionalProperties: true
+        type: object
+    type: object
+  internal_api_handler.HybridSearchRequest:
+    properties:
+      filters:
+        additionalProperties: true
+        type: object
+      k:
+        type: integer
+      query:
+        type: string
+      vector:
+        items:
+          type: number
+        type: array
+      vector_field:
+        type: string
+    required:
+    - query
+    type: object
+  internal_api_handler.KNNSearchRequest:
+    properties:
+      field:
+        description: 向量字段名：content_vector, image_vector
+        type: string
+      filters:
+        additionalProperties: true
+        description: 过滤条件
+        type: object
+      k:
+        description: 返回结果数量
+        type: integer
+      vector:
+        items:
+          type: number
+        type: array
+    required:
+    - vector
+    type: object
+  internal_api_handler.KNNSearchResponse:
+    properties:
+      hits:
+        items:
+          $ref: '#/definitions/internal_api_handler.VectorHit'
+        type: array
+      success:
+        type: boolean
+      took_ms:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_api_handler.OpenSearchHealth:
+    properties:
+      cluster_id:
+        type: string
+      nodes:
+        type: integer
+      status:
+        type: string
+    type: object
+  internal_api_handler.PaginatedResponse:
+    properties:
+      data: {}
+      page:
+        type: integer
+      size:
+        type: integer
+      success:
+        type: boolean
+      total:
+        type: integer
+    type: object
+  internal_api_handler.SearchHit:
+    properties:
+      highlight:
+        additionalProperties: true
+        type: object
+      id:
+        type: string
+      score:
+        type: number
+      source:
+        additionalProperties: true
+        type: object
+    type: object
+  internal_api_handler.SearchRequest:
+    properties:
+      filters:
+        additionalProperties: true
+        type: object
+      from:
+        type: integer
+      highlight:
+        additionalProperties: true
+        type: object
+      query:
+        type: string
+      size:
+        type: integer
+      sort:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+    type: object
+  internal_api_handler.SearchResponse:
+    properties:
+      hits:
+        items:
+          $ref: '#/definitions/internal_api_handler.SearchHit'
+        type: array
+      success:
+        type: boolean
+      took_ms:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_api_handler.SuccessResponse:
+    properties:
+      data: {}
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  internal_api_handler.VectorHit:
+    properties:
+      id:
+        type: string
+      score:
+        type: number
+      source:
+        additionalProperties: true
+        type: object
+    type: object
+  internal_api_router.ErrorResponse:
+    properties:
+      code:
+        type: integer
+      error:
+        type: string
+      success:
+        type: boolean
+    type: object
+  internal_api_router.TokenRequest:
+    properties:
+      role:
+        type: string
+      tenant_id:
+        type: string
+    required:
+    - tenant_id
+    type: object
+  internal_api_router.TokenResponse:
+    properties:
+      expires_in:
+        type: integer
+      success:
+        type: boolean
+      token:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: |-
+    多租户文件索引服务，支持 PDF、图片、文档等文件的索引、存储和搜索
+    认证使用 JWT Token，数据按租户隔离存储在独立的 OpenSearch 索引中。
+  title: OpenSearch File API
+  version: 1.0.0
+paths:
+  /admin/tenants:
+    get:
+      description: 获取所有租户的列表，支持分页
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.PaginatedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 列出租户
+      tags:
+      - Tenant
+    post:
+      consumes:
+      - application/json
+      description: 创建一个新的租户，需要提供唯一的租户 ID 和名称
+      parameters:
+      - description: 创建租户请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_handler.CreateTenantRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_api_handler.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建租户
+      tags:
+      - Tenant
+  /admin/tenants/{id}:
+    delete:
+      description: 软删除租户，租户状态变为 deleted，但数据仍保留
+      parameters:
+      - description: 租户 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 删除租户（软删除）
+      tags:
+      - Tenant
+    get:
+      description: 根据租户 ID 获取详细信息
+      parameters:
+      - description: 租户 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取租户信息
+      tags:
+      - Tenant
+    put:
+      consumes:
+      - application/json
+      description: 更新租户信息，只能更新 name、description 和 metadata 字段
+      parameters:
+      - description: 租户 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 更新租户请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_handler.CreateTenantRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 更新租户
+      tags:
+      - Tenant
+  /admin/tenants/{id}/hard:
+    delete:
+      description: 彻底删除租户，不可恢复
+      parameters:
+      - description: 租户 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 彻底删除租户（硬删除）
+      tags:
+      - Tenant
+  /files:
+    get:
+      description: 获取当前租户下的文件列表
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 列出文件
+      tags:
+      - File
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传文件并建立索引，支持 PDF、图片、文档等格式
+      parameters:
+      - description: 文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: 文件描述
+        in: formData
+        name: description
+        type: string
+      - collectionFormat: csv
+        description: 文件标签
+        in: formData
+        items:
+          type: string
+        name: tags
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.FileUploadResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 上传文件
+      tags:
+      - File
+  /files/{file_id}:
+    delete:
+      description: 根据文件 ID 删除文件
+      parameters:
+      - description: 文件 ID
+        in: path
+        name: file_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 删除文件
+      tags:
+      - File
+    get:
+      description: 根据文件 ID 下载文件
+      parameters:
+      - description: 文件 ID
+        in: path
+        name: file_id
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: 文件内容
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 下载文件
+      tags:
+      - File
+  /files/{file_id}/metadata:
+    get:
+      description: 根据文件 ID 获取文件元数据
+      parameters:
+      - description: 文件 ID
+        in: path
+        name: file_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 获取文件元数据
+      tags:
+      - File
+  /health:
+    get:
+      description: 检查服务及 OpenSearch 连接状态
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_api_handler.HealthResponse'
+      summary: 健康检查
+      tags:
+      - Health
+  /metrics:
+    get:
+      description: 返回 Prometheus 格式的服务监控指标
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Prometheus metrics
+          schema:
+            type: string
+      summary: Prometheus Metrics
+      tags:
+      - Metrics
+  /ping:
+    get:
+      description: 轻量级 Ping 检查，不依赖 OpenSearch
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      summary: 服务 Ping 检查（轻量级健康检查）
+      tags:
+      - Health
+  /search:
+    get:
+      description: 使用 URL 查询参数进行搜索
+      parameters:
+      - description: 搜索关键词
+        in: query
+        name: q
+        type: string
+      - description: 文件类型
+        in: query
+        name: file_type
+        type: string
+      - description: MIME 类型
+        in: query
+        name: content_type
+        type: string
+      - default: 0
+        description: 起始位置
+        in: query
+        name: from
+        type: integer
+      - default: 10
+        description: 返回数量
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.SearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 搜索文件（GET）
+      tags:
+      - Search
+    post:
+      consumes:
+      - application/json
+      description: 使用 JSON 请求体进行全文搜索、过滤和排序
+      parameters:
+      - description: 搜索请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_handler.SearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.SearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 搜索文件（POST 高级搜索）
+      tags:
+      - Search
+  /search/aggregate:
+    post:
+      consumes:
+      - application/json
+      description: 按指定字段聚合统计
+      parameters:
+      - description: 聚合请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_handler.AggregateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.AggregateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 聚合查询
+      tags:
+      - Search
+  /search/count:
+    get:
+      description: 统计当前租户下的文件总数
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.CountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 统计文件数量
+      tags:
+      - Search
+  /search/hybrid:
+    post:
+      consumes:
+      - application/json
+      description: 结合文本关键词和向量进行混合搜索，同时匹配文本相关性和向量相似性
+      parameters:
+      - description: 混合搜索请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_handler.HybridSearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.KNNSearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 混合搜索（文本 + 向量）
+      tags:
+      - Vector Search
+  /search/knn:
+    post:
+      consumes:
+      - application/json
+      description: 使用向量进行 K 近邻搜索，支持 content_vector (1536维) 和 image_vector (512维)
+      parameters:
+      - description: KNN 搜索请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_handler.KNNSearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.KNNSearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: KNN 向量搜索
+      tags:
+      - Vector Search
+  /token:
+    post:
+      consumes:
+      - application/json
+      description: 生成 JWT Token 用于测试，生产环境应使用独立的认证服务
+      parameters:
+      - description: Token 生成请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_router.TokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_router.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_router.ErrorResponse'
+      summary: 生成 JWT Token（测试用）
+      tags:
+      - Authentication
+securityDefinitions:
+  BearerAuth:
+    description: JWT Token，格式：Bearer <token>
+    in: header
+    name: Authorization
+    type: apiKey
+  X-Tenant-ID:
+    description: 租户 ID
+    in: header
+    name: X-Tenant-ID
+    type: apiKey
+swagger: "2.0"

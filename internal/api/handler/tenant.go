@@ -55,6 +55,17 @@ type TenantResponse struct {
 }
 
 // CreateTenant 创建租户
+// @Summary 创建租户
+// @Description 创建一个新的租户，需要提供唯一的租户 ID 和名称
+// @Tags Tenant
+// @Accept json
+// @Produce json
+// @Param request body CreateTenantRequest true "创建租户请求"
+// @Success 201 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /admin/tenants [post]
 func (h *TenantHandler) CreateTenant(c *gin.Context) {
 	var req CreateTenantRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -102,6 +113,15 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 }
 
 // GetTenant 获取租户信息
+// @Summary 获取租户信息
+// @Description 根据租户 ID 获取详细信息
+// @Tags Tenant
+// @Produce json
+// @Param id path string true "租户 ID"
+// @Success 200 {object} SuccessResponse
+// @Failure 404 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /admin/tenants/{id} [get]
 func (h *TenantHandler) GetTenant(c *gin.Context) {
 	tenantID := c.Param("id")
 
@@ -133,6 +153,16 @@ func (h *TenantHandler) GetTenant(c *gin.Context) {
 }
 
 // ListTenants 列出租户
+// @Summary 列出租户
+// @Description 获取所有租户的列表，支持分页
+// @Tags Tenant
+// @Produce json
+// @Param page query int false "页码" default(1)
+// @Param size query int false "每页数量" default(20)
+// @Success 200 {object} PaginatedResponse
+// @Failure 500 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /admin/tenants [get]
 func (h *TenantHandler) ListTenants(c *gin.Context) {
 	page, size := ParsePagination(c)
 
@@ -162,6 +192,18 @@ func (h *TenantHandler) ListTenants(c *gin.Context) {
 }
 
 // UpdateTenant 更新租户
+// @Summary 更新租户
+// @Description 更新租户信息，只能更新 name、description 和 metadata 字段
+// @Tags Tenant
+// @Accept json
+// @Produce json
+// @Param id path string true "租户 ID"
+// @Param request body CreateTenantRequest true "更新租户请求"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /admin/tenants/{id} [put]
 func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 	tenantID := c.Param("id")
 
@@ -220,6 +262,15 @@ func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 }
 
 // DeleteTenant 删除租户（软删除）
+// @Summary 删除租户（软删除）
+// @Description 软删除租户，租户状态变为 deleted，但数据仍保留
+// @Tags Tenant
+// @Produce json
+// @Param id path string true "租户 ID"
+// @Success 200 {object} SuccessResponse
+// @Failure 404 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /admin/tenants/{id} [delete]
 func (h *TenantHandler) DeleteTenant(c *gin.Context) {
 	tenantID := c.Param("id")
 
@@ -250,6 +301,15 @@ func (h *TenantHandler) DeleteTenant(c *gin.Context) {
 }
 
 // HardDeleteTenant 彻底删除租户
+// @Summary 彻底删除租户（硬删除）
+// @Description 彻底删除租户，不可恢复
+// @Tags Tenant
+// @Produce json
+// @Param id path string true "租户 ID"
+// @Success 200 {object} SuccessResponse
+// @Failure 404 {object} ErrorResponse
+// @Security BearerAuth
+// @Router /admin/tenants/{id}/hard [delete]
 func (h *TenantHandler) HardDeleteTenant(c *gin.Context) {
 	tenantID := c.Param("id")
 

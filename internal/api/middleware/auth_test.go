@@ -71,7 +71,6 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 	// Generate valid token
 	claims := &tenant.Claims{
 		TenantID: "test-tenant",
-		UserID:   "user123",
 		Role:     "admin",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -161,7 +160,6 @@ func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 	// Generate expired token
 	claims := &tenant.Claims{
 		TenantID: "test-tenant",
-		UserID:   "user123",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
 			Issuer:    "test-issuer",
@@ -252,11 +250,10 @@ func TestGenerateToken(t *testing.T) {
 	secret := "test-secret"
 	issuer := "test-issuer"
 	tenantID := "test-tenant"
-	userID := "user123"
 	role := "admin"
 	expiry := time.Hour
 
-	token, err := GenerateToken(secret, issuer, tenantID, userID, role, expiry)
+	token, err := GenerateToken(secret, issuer, tenantID, role, expiry)
 	require.NoError(t, err)
 	assert.NotEmpty(t, token)
 }
@@ -265,7 +262,7 @@ func TestGenerateToken_Validation(t *testing.T) {
 	secret := "test-secret"
 	issuer := "test-issuer"
 
-	tokenString, err := GenerateToken(secret, issuer, "tenant1", "user1", "admin", time.Hour)
+	tokenString, err := GenerateToken(secret, issuer, "tenant1", "admin", time.Hour)
 	require.NoError(t, err)
 
 	// Parse and validate
@@ -279,7 +276,6 @@ func TestGenerateToken_Validation(t *testing.T) {
 	claims, ok := token.Claims.(*tenant.Claims)
 	require.True(t, ok)
 	assert.Equal(t, "tenant1", claims.TenantID)
-	assert.Equal(t, "user1", claims.UserID)
 	assert.Equal(t, "admin", claims.Role)
 	assert.Equal(t, issuer, claims.Issuer)
 }

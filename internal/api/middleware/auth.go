@@ -90,7 +90,6 @@ func (m *AuthMiddleware) Middleware() gin.HandlerFunc {
 		// 将 Claims 添加到上下文
 		c.Set("claims", claims)
 		c.Set("tenant_id", claims.TenantID)
-		c.Set("user_id", claims.UserID)
 
 		c.Next()
 	}
@@ -150,19 +149,17 @@ func (m *AuthMiddleware) abortWithError(c *gin.Context, status int, err error) {
 }
 
 // GenerateToken 生成 JWT Token
-func GenerateToken(secret, issuer, tenantID, userID, role string, expireTime time.Duration) (string, error) {
+func GenerateToken(secret, issuer, tenantID, role string, expireTime time.Duration) (string, error) {
 	now := time.Now()
 
 	claims := &tenant.Claims{
 		TenantID: tenantID,
-		UserID:   userID,
 		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(expireTime)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    issuer,
-			Subject:   userID,
 			ID:        generateTokenID(),
 		},
 	}

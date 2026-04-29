@@ -1,0 +1,49 @@
+# OpenSearch File API 配置文件示例
+
+server:
+  port: 8080
+  host: "0.0.0.0"
+  mode: "release"  # debug, release, test
+  read_timeout: 30s
+  write_timeout: 60s
+
+opensearch:
+  host: "localhost"
+  port: 9200
+  username: "admin"
+  password: "admin"
+  secure: true
+  index_prefix: "tenant"
+
+storage:
+  type: "local"  # local 或 s3
+  local_path: "./data/files"
+
+  # S3 配置（当 type=s3 时使用）
+  # s3_bucket: "my-bucket"
+  # s3_region: "us-east-1"
+  # s3_endpoint: ""  # MinIO 等兼容服务
+  # s3_key_id: ""
+  # s3_secret: ""
+
+  # OCR 配置
+  image_ocr: false
+  image_ocr_lang: "eng"
+
+jwt:
+  secret: "change-this-secret-key"
+  issuer: "opensearch-file-api"
+  expire_time: 24h
+
+log:
+  level: "info"
+  format: "json"  # json 或 console
+
+embedding:
+  provider: "openai"  # openai, local, clip
+  model: "text-embedding-3-small"
+  api_key: ""
+  api_url: ""
+  dimensions: 1536
+  batch_size: 10
+  timeout: 30  # 秒

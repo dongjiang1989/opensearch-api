@@ -1,8 +1,8 @@
 # 多阶段构建 Dockerfile
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.1 AS builder
 
 # 安装必要的工具
-RUN apk add --no-cache git ca-certificates
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o /build/opensearch-file-api ./cmd/server
 
 # 运行阶段
-FROM alpine:3.19
+FROM alpine:3.20
 
 # 安装运行时依赖，包括 Tesseract OCR 及其语言包
 RUN apk add --no-cache ca-certificates tzdata \

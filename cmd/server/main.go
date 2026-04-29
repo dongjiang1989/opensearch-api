@@ -1,3 +1,17 @@
+// @title OpenSearch File API
+// @version 1.0.0
+// @description 多租户文件索引服务，支持 PDF、图片、文档等文件的索引、存储和搜索
+// @description 认证使用 JWT Token，数据按租户隔离存储在独立的 OpenSearch 索引中。
+// @host localhost:8080
+// @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description JWT Token，格式：Bearer <token>
+// @securityDefinitions.apikey X-Tenant-ID
+// @in header
+// @name X-Tenant-ID
+// @description 租户 ID
 package main
 
 import (
@@ -25,15 +39,27 @@ var (
 	Version   = "dev"
 	BuildTime = "unknown"
 	configPath string
+	healthcheck bool
 )
 
 func init() {
 	flag.StringVar(&configPath, "config", "", "path to config.yaml file")
+	flag.BoolVar(&healthcheck, "healthcheck", false, "run healthcheck and exit")
 }
 
 func main() {
 	// 解析命令行参数
 	flag.Parse()
+
+	// healthcheck 模式：检查 /health 端点并退出
+	if healthcheck {
+		resp, err := http.Get("http://localhost:8080/health")
+		if err != nil || resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+		resp.Body.Close()
+		os.Exit(0)
+	}
 
 	// 加载配置
 	cfg, err := config.Load(configPath)

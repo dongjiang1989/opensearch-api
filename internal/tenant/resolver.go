@@ -12,7 +12,6 @@ import (
 // Claims JWT Claims
 type Claims struct {
 	TenantID string `json:"tenant_id"`
-	UserID   string `json:"user_id"`
 	Role     string `json:"role"`
 	jwt.RegisteredClaims
 }

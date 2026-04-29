@@ -657,17 +657,19 @@ func (c *Client) HybridSearch(ctx context.Context, tenantID string, query *Hybri
 
 // buildKNNSearchBody 构建 KNN 搜索请求体
 func (c *Client) buildKNNSearchBody(query *KNNQuery) map[string]interface{} {
-	body := map[string]interface{}{
-		"size": query.K,
-		"knn": map[string]interface{}{
-			query.Field: map[string]interface{}{
-				"vector": query.Vector,
-				"k":      query.K,
-			},
+	knnClause := map[string]interface{}{
+		query.Field: map[string]interface{}{
+			"vector": query.Vector,
+			"k":      query.K,
 		},
 	}
 
-	// 添加过滤条件
+	body := map[string]interface{}{
+		"size": query.K,
+		"knn":  knnClause,
+	}
+
+	// 添加过滤条件到 knn 查询
 	if len(query.Filters) > 0 {
 		filterArray := make([]map[string]interface{}, 0, len(query.Filters))
 		for key, value := range query.Filters {
@@ -677,7 +679,7 @@ func (c *Client) buildKNNSearchBody(query *KNNQuery) map[string]interface{} {
 				},
 			})
 		}
-		body["knn"].(map[string]interface{})["filter"] = filterArray
+		knnClause["filter"] = filterArray
 	}
 
 	return body
