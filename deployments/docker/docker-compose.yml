@@ -145,6 +145,9 @@ services:
       - OPENSEARCH_LOG_LEVEL=debug
       - OPENSEARCH_LOG_FORMAT=console
 
+      # Embedding disabled by default (set openai/local/clip + profile to enable)
+      - OPENSEARCH_EMBEDDING_PROVIDER=none
+
       # ---- 嵌入服务配置 (选一种，与 profile 配合) ----
 
       # 模式 1: Ollama 文本嵌入 (docker compose --profile ollama up)

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/dongjiang1989/opensearch-api/internal/api/middleware"
 	"github.com/dongjiang1989/opensearch-api/internal/indexer"
+	"github.com/dongjiang1989/opensearch-api/internal/opensearch"
 	"github.com/dongjiang1989/opensearch-api/internal/storage"
 )
 
@@ -312,12 +314,121 @@ func (h *FileHandler) ListFiles(c *gin.Context) {
 		return
 	}
 
-	// TODO: 实现文件列表查询
-	// 目前返回空列表
-	c.JSON(http.StatusOK, SuccessResponse{
+	page := c.DefaultQuery("page", "1")
+	size := c.DefaultQuery("size", "20")
+
+	var pageNum, sizeNum int
+	fmt.Sscanf(page, "%d", &pageNum)
+	fmt.Sscanf(size, "%d", &sizeNum)
+
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if sizeNum < 1 || sizeNum > 100 {
+		sizeNum = 20
+	}
+
+	query := &opensearch.SearchQuery{
+		From: (pageNum - 1) * sizeNum,
+		Size: sizeNum,
+		Sort: []map[string]interface{}{
+			{"created_at": map[string]interface{}{"order": "desc"}},
+		},
+	}
+
+	result, err := h.indexer.SearchFiles(c.Request.Context(), tenantID, query)
+	if err != nil {
+		h.logger.Error("failed to list files", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Success: false,
+			Error:   "failed to list files",
+		})
+		return
+	}
+
+	files := make([]FileListItem, 0, len(result.Hits))
+	for _, hit := range result.Hits {
+		files = append(files, FileListItem{
+			ID:          hit.ID,
+			Filename:    getStringField(hit.Source, "filename"),
+			ContentType: getStringField(hit.Source, "content_type"),
+			FileSize:    getInt64Field(hit.Source, "file_size"),
+			Description: getStringField(hit.Source, "description"),
+			Tags:        getStringSliceField(hit.Source, "tags"),
+			CreatedAt:   getStringField(hit.Source, "created_at"),
+			UpdatedAt:   getStringField(hit.Source, "updated_at"),
+		})
+	}
+
+	c.JSON(http.StatusOK, ListFilesResponse{
 		Success: true,
-		Data:    []interface{}{},
+		Total:   result.Total,
+		Page:    pageNum,
+		Size:    sizeNum,
+		Data:    files,
 	})
+}
+
+// ListFilesResponse 文件列表响应
+type ListFilesResponse struct {
+	Success bool           `json:"success"`
+	Total   int            `json:"total"`
+	Page    int            `json:"page"`
+	Size    int            `json:"size"`
+	Data    []FileListItem `json:"data"`
+}
+
+// FileListItem 文件列表项
+type FileListItem struct {
+	ID          string   `json:"id"`
+	Filename    string   `json:"filename"`
+	ContentType string   `json:"content_type"`
+	FileSize    int64    `json:"file_size"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+}
+
+func getStringField(m map[string]interface{}, key string) string {
+	if v, ok := m[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func getInt64Field(m map[string]interface{}, key string) int64 {
+	if v, ok := m[key]; ok {
+		switch val := v.(type) {
+		case int64:
+			return val
+		case float64:
+			return int64(val)
+		case int:
+			return int64(val)
+		}
+	}
+	return 0
+}
+
+func getStringSliceField(m map[string]interface{}, key string) []string {
+	if v, ok := m[key]; ok {
+		if arr, ok := v.([]interface{}); ok {
+			result := make([]string, 0, len(arr))
+			for _, item := range arr {
+				if s, ok := item.(string); ok {
+					result = append(result, s)
+				}
+			}
+			return result
+		}
+		if arr, ok := v.([]string); ok {
+			return arr
+		}
+	}
+	return nil
 }
 
 // FileMetadata 文件元数据结构

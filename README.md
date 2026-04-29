@@ -222,26 +222,35 @@ curl -X DELETE http://localhost:18080/api/v1/admin/tenants/tenant-1/hard
 
 ## 配置
 
-### 环境变量
-
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `OPENSEARCH_SERVER_PORT` | 服务端口 | 8080 |
-| `OPENSEARCH_OPENSEARCH_HOST` | OpenSearch 主机 | localhost |
-| `OPENSEARCH_OPENSEARCH_PORT` | OpenSearch 端口 | 9200 |
-| `OPENSEARCH_OPENSEARCH_USERNAME` | OpenSearch 用户名 | admin |
-| `OPENSEARCH_OPENSEARCH_PASSWORD` | OpenSearch 密码 | admin |
-| `OPENSEARCH_OPENSEARCH_SECURE` | 是否使用 HTTPS | false |
-| `OPENSEARCH_STORAGE_TYPE` | 存储类型 (local/s3) | local |
-| `OPENSEARCH_STORAGE_LOCAL_PATH` | 本地存储路径 | ./data/files |
-| `OPENSEARCH_JWT_SECRET` | JWT 密钥 | 需修改 |
-| `OPENSEARCH_LOG_LEVEL` | 日志级别 | info |
-| `OPENSEARCH_LOG_FORMAT` | 日志格式 (json/console) | json |
-| `OPENSEARCH_METRICS_PORT` | Metrics 端口 | 与 Server Port 相同 |
-
 ### 配置文件
 
-详见 `configs/config.yaml`
+详见 `configs/config.yaml`，支持以下配置项：
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| `server.port` | 服务端口 | 8080 |
+| `server.host` | 监听地址 | 0.0.0.0 |
+| `server.mode` | 运行模式 | release (debug/release/test) |
+| `server.read_timeout` | 读超时 | 30s |
+| `server.write_timeout` | 写超时 | 60s |
+| `opensearch.host` | OpenSearch 主机 | localhost |
+| `opensearch.port` | OpenSearch 端口 | 9200 |
+| `opensearch.username` | OpenSearch 用户名 | admin |
+| `opensearch.password` | OpenSearch 密码 | admin |
+| `opensearch.secure` | 是否使用 HTTPS | true |
+| `opensearch.index_prefix` | 租户索引前缀 | tenant |
+| `storage.type` | 存储类型 | local (local/s3) |
+| `storage.local_path` | 本地存储路径 | ./data/files |
+| `storage.image_ocr` | 启用图片 OCR | false |
+| `storage.image_ocr_lang` | OCR 语言 | eng |
+| `jwt.secret` | JWT 密钥 | change-this-secret-key |
+| `jwt.issuer` | JWT 签发者 | opensearch-file-api |
+| `jwt.expire_time` | Token 过期时间 | 24h |
+| `log.level` | 日志级别 | info |
+| `log.format` | 日志格式 | json (json/console) |
+| `embedding.provider` | 嵌入服务提供者 | openai (openai/local/clip) |
+| `embedding.model` | 嵌入模型 | text-embedding-3-small |
+| `embedding.dimensions` | 向量维度 | 1536 |
 
 ## Kubernetes 部署
 
@@ -270,7 +279,12 @@ make test-integration
 
 # 生成覆盖率报告
 make test-coverage
+
+# E2E 端到端测试（需要 Docker Compose 运行中）
+bash scripts/test_e2e.sh
 ```
+
+E2E 测试覆盖：租户管理 → JWT 生成 → 文件上传 → 文件操作 → 文本搜索 → 租户隔离 → 向量搜索（KNN/混合） → 聚合统计 → 健康检查
 
 ### 代码质量
 
@@ -360,7 +374,48 @@ export OPENSEARCH_STORAGE_IMAGE_OCR=true
 export OPENSEARCH_STORAGE_IMAGE_OCR_LANG=chi_sim
 ```
 
-## 架构
+## OpenSearch 索引映射
+
+### 文件索引结构
+
+每个租户的文件存储在独立的索引中，命名格式为 `tenant_{tenantID}_files`。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `filename` | text + keyword | 文件名，支持全文搜索和精确匹配 |
+| `content` | text | 文件内容（从 PDF/文档中提取） |
+| `content_type` | keyword | MIME 类型 |
+| `file_type` | keyword | 文件类型（pdf, image, text 等） |
+| `file_size` | long | 文件大小（字节） |
+| `description` | text | 文件描述 |
+| `tags` | keyword | 标签数组 |
+| `metadata` | object | 元数据（width, height, duration, pages, author, created_at） |
+| `storage_path` | keyword | 存储路径 |
+| `tenant_id` | keyword | 租户 ID |
+| `created_at` | date | 创建时间 |
+| `updated_at` | date | 更新时间 |
+| `content_vector` | knn_vector (1536维) | 文本嵌入向量，用于语义搜索 |
+| `image_vector` | knn_vector (512维) | 图片嵌入向量（CLIP），用于图片相似度搜索 |
+
+### 向量搜索
+
+OpenSearch 使用 `knn_vector` 类型存储向量，底层采用 NMSLIB 引擎：
+
+- **content_vector** (1536维): 适用于 OpenAI text-embedding-3-small 等模型
+- **image_vector** (512维): 适用于 CLIP 多模态模型
+
+> 注意：NMSLIB 引擎不支持 KNN 查询中的过滤器（filters），混合搜索已针对此限制进行优化。
+
+## Swagger API 文档
+
+项目使用 Swag 生成 OpenAPI 2.0 规范的文档：
+
+```bash
+# 生成 Swagger 文档
+make swag
+
+# 生成的文件位于 api/swagger.yaml
+```
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐

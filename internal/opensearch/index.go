@@ -60,19 +60,15 @@ func FileMapping() map[string]interface{} {
 			"updated_at": map[string]interface{}{
 				"type": "date",
 			},
-			// 向量字段：用于文本相似度搜索
+			// 向量字段：用于文本相似度搜索 (OpenSearch uses knn_vector)
 			"content_vector": map[string]interface{}{
-				"type":       "dense_vector",
-				"dims":       1536,
-				"index":      true,
-				"similarity": "cosine",
+				"type":      "knn_vector",
+				"dimension": 1536,
 			},
 			// 向量字段：用于图片/多模态搜索（CLIP）
 			"image_vector": map[string]interface{}{
-				"type":       "dense_vector",
-				"dims":       512,
-				"index":      true,
-				"similarity": "cosine",
+				"type":      "knn_vector",
+				"dimension": 512,
 			},
 		},
 	}

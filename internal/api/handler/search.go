@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -340,105 +339,6 @@ func (h *SearchHandler) Count(c *gin.Context) {
 	c.JSON(http.StatusOK, CountResponse{
 		Success: true,
 		Count:   count,
-	})
-}
-
-// ListFilesResponse 文件列表响应
-type ListFilesResponse struct {
-	Success bool     `json:"success"`
-	Total   int      `json:"total"`
-	Files   []FileInfo `json:"files"`
-}
-
-// FileInfo 文件信息
-type FileInfo struct {
-	ID          string    `json:"id"`
-	Filename    string    `json:"filename"`
-	ContentType string    `json:"content_type"`
-	FileType    string    `json:"file_type"`
-	FileSize    int64     `json:"file_size"`
-	Description string    `json:"description,omitempty"`
-	Tags        []string  `json:"tags,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-// ListFiles 列出文件
-func (h *SearchHandler) ListFiles(c *gin.Context) {
-	tenantID, ok := middleware.GetTenantID(c)
-	if !ok || tenantID == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{
-			Success: false,
-			Error:   "tenant ID is required",
-		})
-		return
-	}
-
-	page, size := ParsePagination(c)
-
-	query := &opensearch.SearchQuery{
-		From: (page - 1) * size,
-		Size: size,
-		Sort: []map[string]interface{}{
-			{"created_at": map[string]string{"order": "desc"}},
-		},
-	}
-
-	result, err := h.osClient.Search(c.Request.Context(), tenantID, query)
-	if err != nil {
-		h.logger.Error("list files failed",
-			zap.String("tenant_id", tenantID),
-			zap.Error(err))
-
-		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Success: false,
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	files := make([]FileInfo, 0, len(result.Hits))
-	for _, hit := range result.Hits {
-		source := hit.Source
-		file := FileInfo{
-			ID: hit.ID,
-		}
-
-		if v, ok := source["filename"].(string); ok {
-			file.Filename = v
-		}
-		if v, ok := source["content_type"].(string); ok {
-			file.ContentType = v
-		}
-		if v, ok := source["file_type"].(string); ok {
-			file.FileType = v
-		}
-		if v, ok := source["file_size"].(float64); ok {
-			file.FileSize = int64(v)
-		}
-		if v, ok := source["description"].(string); ok {
-			file.Description = v
-		}
-		if v, ok := source["tags"].([]interface{}); ok {
-			file.Tags = make([]string, len(v))
-			for i, t := range v {
-				if s, ok := t.(string); ok {
-					file.Tags[i] = s
-				}
-			}
-		}
-		if v, ok := source["created_at"].(string); ok {
-			if t, err := time.Parse(time.RFC3339, v); err == nil {
-				file.CreatedAt = t
-			}
-		}
-
-		files = append(files, file)
-	}
-
-	c.JSON(http.StatusOK, ListFilesResponse{
-		Success: true,
-		Total:   result.Total,
-		Files:   files,
 	})
 }
 

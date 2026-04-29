@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/opensearch-project/opensearch-go/v3"
 	"github.com/opensearch-project/opensearch-go/v3/opensearchapi"
@@ -109,18 +110,22 @@ func (c *Client) IndexExists(ctx context.Context, indexName string) (bool, error
 
 	res, err := c.client.Indices.Exists(ctx, req)
 	if err != nil {
+		// Check if error indicates not found
+		if strings.Contains(err.Error(), "404") {
+			return false, nil
+		}
 		return false, fmt.Errorf("failed to check index exists: %w", err)
 	}
 
-	if res.StatusCode == http.StatusNotFound {
-		return false, nil
-	}
 	if res.IsError() {
+		if res.StatusCode == 404 {
+			return false, nil
+		}
 		body, _ := io.ReadAll(res.Body)
 		return false, fmt.Errorf("failed to check index exists: %s", string(body))
 	}
 
-	return res.StatusCode == http.StatusOK, nil
+	return true, nil
 }
 
 // DeleteIndex 删除索引
@@ -287,6 +292,10 @@ func (c *Client) Search(ctx context.Context, tenantID string, query *SearchQuery
 	}
 
 	if res.Inspect().Response.IsError() {
+		statusCode := res.Inspect().Response.StatusCode
+		if statusCode == http.StatusNotFound || res.Inspect().Response.String() != "" && strings.Contains(res.Inspect().Response.String(), "index_not_found_exception") {
+			return &SearchResult{Total: 0, Hits: nil, Took: 0}, nil
+		}
 		return nil, fmt.Errorf("search failed: %s", res.Inspect().Response.String())
 	}
 
@@ -581,7 +590,11 @@ func (c *Client) KNNSearch(ctx context.Context, tenantID string, query *KNNQuery
 	}
 
 	if res.Inspect().Response.IsError() {
-		return nil, fmt.Errorf("knn search failed: %s", res.Inspect().Response.String())
+		respStr := res.Inspect().Response.String()
+		if res.Inspect().Response.StatusCode == http.StatusNotFound || strings.Contains(respStr, "index_not_found_exception") {
+			return &SearchResult{Total: 0, Hits: nil, Took: 0}, nil
+		}
+		return nil, fmt.Errorf("knn search failed: %s", respStr)
 	}
 
 	// 解析搜索结果
@@ -627,7 +640,11 @@ func (c *Client) HybridSearch(ctx context.Context, tenantID string, query *Hybri
 	}
 
 	if res.Inspect().Response.IsError() {
-		return nil, fmt.Errorf("hybrid search failed: %s", res.Inspect().Response.String())
+		respStr := res.Inspect().Response.String()
+		if res.Inspect().Response.StatusCode == http.StatusNotFound || strings.Contains(respStr, "index_not_found_exception") {
+			return &SearchResult{Total: 0, Hits: nil, Took: 0}, nil
+		}
+		return nil, fmt.Errorf("hybrid search failed: %s", respStr)
 	}
 
 	// 解析搜索结果
@@ -664,11 +681,6 @@ func (c *Client) buildKNNSearchBody(query *KNNQuery) map[string]interface{} {
 		},
 	}
 
-	body := map[string]interface{}{
-		"size": query.K,
-		"knn":  knnClause,
-	}
-
 	// 添加过滤条件到 knn 查询
 	if len(query.Filters) > 0 {
 		filterArray := make([]map[string]interface{}, 0, len(query.Filters))
@@ -679,7 +691,14 @@ func (c *Client) buildKNNSearchBody(query *KNNQuery) map[string]interface{} {
 				},
 			})
 		}
-		knnClause["filter"] = filterArray
+		knnClause[query.Field].(map[string]interface{})["filter"] = filterArray
+	}
+
+	body := map[string]interface{}{
+		"size":  query.K,
+		"query": map[string]interface{}{
+			"knn": knnClause,
+		},
 	}
 
 	return body
@@ -687,34 +706,32 @@ func (c *Client) buildKNNSearchBody(query *KNNQuery) map[string]interface{} {
 
 // buildHybridSearchBody 构建混合搜索请求体（结合文本和向量搜索）
 func (c *Client) buildHybridSearchBody(query *HybridQuery) map[string]interface{} {
-	// 使用 bool 查询结合文本匹配和向量相似度
-	body := map[string]interface{}{
-		"size": query.K,
-		"query": map[string]interface{}{
-			"bool": map[string]interface{}{
-				"must": []map[string]interface{}{
-					{
-						"multi_match": map[string]interface{}{
-							"query":  query.Query,
-							"fields": []string{"content", "filename", "description", "tags"},
-						},
+	// 当有向量时，使用 KNN 搜索（NMSLIB 不支持 filter，所以不做过滤）
+	if len(query.Vector) > 0 {
+		return map[string]interface{}{
+			"size": query.K,
+			"query": map[string]interface{}{
+				"knn": map[string]interface{}{
+					query.VectorField: map[string]interface{}{
+						"vector": query.Vector,
+						"k":      query.K,
 					},
 				},
-			},
-		},
-	}
-
-	// 使用 rescore 进行向量重排序
-	if len(query.Vector) > 0 {
-		body["knn"] = map[string]interface{}{
-			query.VectorField: map[string]interface{}{
-				"vector": query.Vector,
-				"k":      query.K * 2, // 获取更多结果用于重排序
 			},
 		}
 	}
 
-	// 添加过滤条件
+	// 没有向量时，只做文本搜索
+	body := map[string]interface{}{
+		"size": query.K,
+		"query": map[string]interface{}{
+			"multi_match": map[string]interface{}{
+				"query":  query.Query,
+				"fields": []string{"content", "filename", "description", "tags"},
+			},
+		},
+	}
+
 	if len(query.Filters) > 0 {
 		filterArray := make([]map[string]interface{}, 0, len(query.Filters))
 		for key, value := range query.Filters {
@@ -724,8 +741,18 @@ func (c *Client) buildHybridSearchBody(query *HybridQuery) map[string]interface{
 				},
 			})
 		}
-		if knn, ok := body["knn"].(map[string]interface{}); ok {
-			knn["filter"] = filterArray
+		body["query"] = map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": []map[string]interface{}{
+					{
+						"multi_match": map[string]interface{}{
+							"query":  query.Query,
+							"fields": []string{"content", "filename", "description", "tags"},
+						},
+					},
+				},
+				"filter": filterArray,
+			},
 		}
 	}
 

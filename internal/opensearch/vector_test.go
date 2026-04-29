@@ -115,9 +115,13 @@ func TestClient_buildKNNSearchBody(t *testing.T) {
 				if body["size"] != 10 {
 					t.Errorf("size = %v, want 10", body["size"])
 				}
-				knn, ok := body["knn"].(map[string]interface{})
+				query, ok := body["query"].(map[string]interface{})
 				if !ok {
-					t.Fatal("knn should be a map")
+					t.Fatal("query should be a map")
+				}
+				knn, ok := query["knn"].(map[string]interface{})
+				if !ok {
+					t.Fatal("query.knn should be a map")
 				}
 				if _, ok := knn["content_vector"]; !ok {
 					t.Error("knn should contain content_vector")
@@ -135,13 +139,17 @@ func TestClient_buildKNNSearchBody(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, body map[string]interface{}) {
-				knn, ok := body["knn"].(map[string]interface{})
+				query, ok := body["query"].(map[string]interface{})
 				if !ok {
-					t.Fatal("knn should be a map")
+					t.Fatal("query should be a map")
 				}
-				filter, ok := knn["filter"]
+				knn, ok := query["knn"].(map[string]interface{})
 				if !ok {
-					t.Error("knn should contain filter")
+					t.Fatal("query.knn should be a map")
+				}
+				filter, ok := knn["content_vector"].(map[string]interface{})["filter"]
+				if !ok {
+					t.Error("knn field should contain filter")
 				}
 				filterArray, ok := filter.([]map[string]interface{})
 				if !ok {
@@ -163,9 +171,13 @@ func TestClient_buildKNNSearchBody(t *testing.T) {
 				if body["size"] != 5 {
 					t.Errorf("size = %v, want 5", body["size"])
 				}
-				knn, ok := body["knn"].(map[string]interface{})
+				query, ok := body["query"].(map[string]interface{})
 				if !ok {
-					t.Fatal("knn should be a map")
+					t.Fatal("query should be a map")
+				}
+				knn, ok := query["knn"].(map[string]interface{})
+				if !ok {
+					t.Fatal("query.knn should be a map")
 				}
 				if _, ok := knn["image_vector"]; !ok {
 					t.Error("knn should contain image_vector")
@@ -206,11 +218,12 @@ func TestClient_buildHybridSearchBody(t *testing.T) {
 				if !ok {
 					t.Fatal("query should be a map")
 				}
-				if _, ok := query["bool"]; !ok {
-					t.Error("query should contain bool")
+				knn, ok := query["knn"].(map[string]interface{})
+				if !ok {
+					t.Fatal("query should contain knn")
 				}
-				if _, ok := body["knn"]; !ok {
-					t.Error("body should contain knn")
+				if _, ok := knn["content_vector"]; !ok {
+					t.Error("knn should contain content_vector")
 				}
 			},
 		},
@@ -226,20 +239,20 @@ func TestClient_buildHybridSearchBody(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, body map[string]interface{}) {
-				knn, ok := body["knn"].(map[string]interface{})
+				query, ok := body["query"].(map[string]interface{})
 				if !ok {
-					t.Fatal("knn should be a map")
+					t.Fatal("query should be a map")
 				}
-				filter, ok := knn["filter"]
+				knn, ok := query["knn"].(map[string]interface{})
 				if !ok {
-					t.Error("knn should contain filter")
+					t.Fatal("query should contain knn")
 				}
-				filterArray, ok := filter.([]map[string]interface{})
+				field, ok := knn["content_vector"].(map[string]interface{})
 				if !ok {
-					t.Fatal("filter should be an array")
+					t.Fatal("knn should contain content_vector")
 				}
-				if len(filterArray) == 0 {
-					t.Error("filter should not be empty")
+				if _, ok := field["filter"]; !ok {
+					t.Error("knn field should contain filter")
 				}
 			},
 		},
@@ -252,15 +265,12 @@ func TestClient_buildHybridSearchBody(t *testing.T) {
 				K:           10,
 			},
 			validate: func(t *testing.T, body map[string]interface{}) {
-				if _, ok := body["knn"]; ok {
-					t.Error("body should not contain knn when vector is nil")
-				}
 				query, ok := body["query"].(map[string]interface{})
 				if !ok {
 					t.Fatal("query should be a map")
 				}
-				if _, ok := query["bool"]; !ok {
-					t.Error("query should contain bool")
+				if _, ok := query["multi_match"]; !ok {
+					t.Error("query should contain multi_match")
 				}
 			},
 		},
@@ -287,17 +297,11 @@ func TestFileMapping_VectorFields(t *testing.T) {
 	if !ok {
 		t.Fatal("content_vector field should exist")
 	}
-	if contentVector["type"] != "dense_vector" {
-		t.Errorf("content_vector type = %v, want dense_vector", contentVector["type"])
+	if contentVector["type"] != "knn_vector" {
+		t.Errorf("content_vector type = %v, want knn_vector", contentVector["type"])
 	}
-	if contentVector["dims"] != 1536 {
-		t.Errorf("content_vector dims = %v, want 1536", contentVector["dims"])
-	}
-	if contentVector["index"] != true {
-		t.Error("content_vector should be indexed")
-	}
-	if contentVector["similarity"] != "cosine" {
-		t.Errorf("content_vector similarity = %v, want cosine", contentVector["similarity"])
+	if contentVector["dimension"] != 1536 {
+		t.Errorf("content_vector dimension = %v, want 1536", contentVector["dimension"])
 	}
 
 	// 验证 image_vector 字段
@@ -305,17 +309,11 @@ func TestFileMapping_VectorFields(t *testing.T) {
 	if !ok {
 		t.Fatal("image_vector field should exist")
 	}
-	if imageVector["type"] != "dense_vector" {
-		t.Errorf("image_vector type = %v, want dense_vector", imageVector["type"])
+	if imageVector["type"] != "knn_vector" {
+		t.Errorf("image_vector type = %v, want knn_vector", imageVector["type"])
 	}
-	if imageVector["dims"] != 512 {
-		t.Errorf("image_vector dims = %v, want 512", imageVector["dims"])
-	}
-	if imageVector["index"] != true {
-		t.Error("image_vector should be indexed")
-	}
-	if imageVector["similarity"] != "cosine" {
-		t.Errorf("image_vector similarity = %v, want cosine", imageVector["similarity"])
+	if imageVector["dimension"] != 512 {
+		t.Errorf("image_vector dimension = %v, want 512", imageVector["dimension"])
 	}
 }
 
