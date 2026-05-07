@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -78,11 +79,19 @@ func NewS3Storage(cfg S3StorageConfig) (*S3Storage, error) {
 func (s *S3Storage) Save(ctx context.Context, tenantID, fileID string, reader io.Reader) (*FileMetadata, error) {
 	key := s.makeKey(tenantID, fileID)
 
+	// 读取整个 body 到 buffer，设置 ContentLength 避免 SDK 使用 aws-chunked 编码
+	//（阿里云 OSS 不支持 aws-chunked）
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file body: %w", err)
+	}
+
 	// 上传到 S3
 	result, err := s.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-		Body:   reader,
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          bytes.NewReader(body),
+		ContentLength: aws.Int64(int64(len(body))),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to upload to s3: %w", err)

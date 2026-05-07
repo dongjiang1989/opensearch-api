@@ -58,7 +58,7 @@ type StorageConfig struct {
 	S3Endpoint string `mapstructure:"s3_endpoint"` // MinIO 等兼容服务
 	S3KeyID    string `mapstructure:"s3_key_id"`
 	S3Secret   string `mapstructure:"s3_secret"`
-	UsePathStyle bool `mapstructure:"use_path_style"` // MinIO=true, 阿里云 OSS=false
+	UsePathStyle     bool `mapstructure:"use_path_style"`     // MinIO=true, 阿里云 OSS=false
 	// OCR 配置
 	ImageOCR         bool   `mapstructure:"image_ocr"`          // 是否启用图片 OCR
 	ImageOCRLang     string `mapstructure:"image_ocr_lang"`     // OCR 语言，默认 eng
