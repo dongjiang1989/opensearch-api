@@ -1,12 +1,12 @@
 services:
   # OpenSearch 单节点（开发环境）
   opensearch:
-    image: opensearchproject/opensearch:2.11.0
+    image: opensearchproject/opensearch:3.2.0
     container_name: opensearch
     environment:
       - discovery.type=single-node
       - plugins.security.disabled=true
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=admin123
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Str0ng!P@ssw0rd
       - bootstrap.memory_lock=true
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
     ulimits:
@@ -130,7 +130,7 @@ services:
       - OPENSEARCH_OPENSEARCH_HOST=opensearch
       - OPENSEARCH_OPENSEARCH_PORT=9200
       - OPENSEARCH_OPENSEARCH_USERNAME=admin
-      - OPENSEARCH_OPENSEARCH_PASSWORD=admin123
+      - OPENSEARCH_OPENSEARCH_PASSWORD=Str0ng!P@ssw0rd
       - OPENSEARCH_OPENSEARCH_SECURE=false
       - OPENSEARCH_STORAGE_TYPE=s3
       - OPENSEARCH_STORAGE_S3BUCKET=opensearch-files
@@ -138,6 +138,7 @@ services:
       - OPENSEARCH_STORAGE_S3ENDPOINT=http://minio:9000
       - OPENSEARCH_STORAGE_S3KEYID=minioadmin
       - OPENSEARCH_STORAGE_S3SECRET=minioadmin123
+      - OPENSEARCH_STORAGE_USE_PATH_STYLE=true
       - OPENSEARCH_STORAGE_IMAGE_OCR=true
       - OPENSEARCH_STORAGE_IMAGE_OCR_LANG=eng
       - OPENSEARCH_JWT_SECRET=dev-secret-key-change-in-production
