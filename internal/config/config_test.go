@@ -4,13 +4,31 @@ import (
 	"os"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func resetViper() {
+	viper.Reset()
+}
+
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { require.NoError(t, os.Chdir(wd)) })
+}
+
 func TestLoad_Defaults(t *testing.T) {
 	// 清空环境变量
 	os.Clearenv()
+	resetViper()
+
+	// 使用空临时目录，避免读取到项目中的 config.yaml
+	tmpDir := t.TempDir()
+	chdir(t, tmpDir)
 
 	cfg, err := Load("")
 	require.NoError(t, err)
@@ -35,6 +53,11 @@ func TestLoad_Defaults(t *testing.T) {
 func TestLoad_EnvironmentVariables(t *testing.T) {
 	// 清空环境变量
 	os.Clearenv()
+	resetViper()
+
+	// 使用空临时目录
+	tmpDir := t.TempDir()
+	chdir(t, tmpDir)
 
 	// 设置环境变量
 	_ = os.Setenv("OPENSEARCH_SERVER_PORT", "9090")
