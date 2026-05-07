@@ -58,6 +58,7 @@ type StorageConfig struct {
 	S3Endpoint string `mapstructure:"s3_endpoint"` // MinIO 等兼容服务
 	S3KeyID    string `mapstructure:"s3_key_id"`
 	S3Secret   string `mapstructure:"s3_secret"`
+	UsePathStyle bool `mapstructure:"use_path_style"` // MinIO=true, 阿里云 OSS=false
 	// OCR 配置
 	ImageOCR         bool   `mapstructure:"image_ocr"`          // 是否启用图片 OCR
 	ImageOCRLang     string `mapstructure:"image_ocr_lang"`     // OCR 语言，默认 eng
@@ -142,6 +143,8 @@ func setDefaults() {
 	viper.SetDefault("storage.image_ocr_lang", "eng")
 
 	// Storage - S3 (bind env explicitly for nested keys)
+	_ = viper.BindEnv("storage.use_path_style", "OPENSEARCH_STORAGE_USEPATHSTYLE")
+	_ = viper.BindEnv("storage.use_path_style", "OPENSEARCH_STORAGE_USE_PATH_STYLE")
 	_ = viper.BindEnv("storage.s3_bucket", "OPENSEARCH_STORAGE_S3BUCKET")
 	_ = viper.BindEnv("storage.s3_bucket", "OPENSEARCH_STORAGE_S3_BUCKET")
 	_ = viper.BindEnv("storage.s3_region", "OPENSEARCH_STORAGE_S3REGION")

@@ -22,12 +22,13 @@ type S3Storage struct {
 
 // S3StorageConfig S3 存储配置
 type S3StorageConfig struct {
-	Bucket   string
-	Region   string
-	Endpoint string // MinIO 等兼容服务地址
-	KeyID    string
-	Secret   string
-	Logger   *zap.Logger
+	Bucket       string
+	Region       string
+	Endpoint     string // MinIO 等兼容服务地址
+	KeyID        string
+	Secret       string
+	UsePathStyle bool   // MinIO=true, 阿里云 OSS=false
+	Logger       *zap.Logger
 }
 
 // NewS3Storage 创建 S3 存储
@@ -62,7 +63,7 @@ func NewS3Storage(cfg S3StorageConfig) (*S3Storage, error) {
 	client := s3.NewFromConfig(awsConfig, func(o *s3.Options) {
 		if cfg.Endpoint != "" {
 			o.BaseEndpoint = aws.String(cfg.Endpoint)
-			o.UsePathStyle = true // MinIO 需要路径风格
+			o.UsePathStyle = cfg.UsePathStyle // MinIO=true, 阿里云 OSS=false
 		}
 	})
 

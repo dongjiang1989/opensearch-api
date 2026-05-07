@@ -102,12 +102,13 @@ func main() {
 	var fileStorage storage.Storage
 	if cfg.Storage.IsS3() {
 		fileStorage, err = storage.NewS3Storage(storage.S3StorageConfig{
-			Bucket:   cfg.Storage.S3Bucket,
-			Region:   cfg.Storage.S3Region,
-			Endpoint: cfg.Storage.S3Endpoint,
-			KeyID:    cfg.Storage.S3KeyID,
-			Secret:   cfg.Storage.S3Secret,
-			Logger:   logger,
+			Bucket:       cfg.Storage.S3Bucket,
+			Region:       cfg.Storage.S3Region,
+			Endpoint:     cfg.Storage.S3Endpoint,
+			KeyID:        cfg.Storage.S3KeyID,
+			Secret:       cfg.Storage.S3Secret,
+			UsePathStyle: cfg.Storage.UsePathStyle,
+			Logger:       logger,
 		})
 		if err != nil {
 			logger.Fatal("failed to create s3 storage", zap.Error(err))
