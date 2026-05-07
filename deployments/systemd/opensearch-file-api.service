@@ -1,0 +1,29 @@
+[Unit]
+Description=OpenSearch File API Service
+Documentation=https://github.com/dongjiang1989/opensearch-api
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=opensearch-file-api
+Group=opensearch-file-api
+ExecStart=/usr/local/bin/opensearch-file-api -config /etc/opensearch-file-api/config.yaml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opensearch-file-api
+
+# Environment (optional, can also be set via /etc/opensearch-file-api/env)
+EnvironmentFile=-/etc/opensearch-file-api/env
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/opensearch-file-api /var/log/opensearch-file-api
+
+[Install]
+WantedBy=multi-user.target

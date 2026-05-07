@@ -68,6 +68,25 @@ deps:
 	go mod download
 	go mod tidy
 
+# Systemd service
+systemd-install:
+	sudo ./deployments/systemd/install.sh
+
+systemd-start:
+	sudo systemctl start $(APP_NAME)
+
+systemd-stop:
+	sudo systemctl stop $(APP_NAME)
+
+systemd-restart:
+	sudo systemctl restart $(APP_NAME)
+
+systemd-status:
+	systemctl status $(APP_NAME)
+
+systemd-logs:
+	journalctl -u $(APP_NAME) -f
+
 # Clean
 clean:
 	rm -rf bin/
@@ -88,4 +107,10 @@ help:
 	@echo "  docker-compose-down - Stop Docker Compose"
 	@echo "  helm-lint        - Lint Helm chart"
 	@echo "  swag               - Generate Swagger API docs (YAML)"
+	@echo "  systemd-install  - Install as systemd service"
+	@echo "  systemd-start    - Start systemd service"
+	@echo "  systemd-stop     - Stop systemd service"
+	@echo "  systemd-restart  - Restart systemd service"
+	@echo "  systemd-status   - Show systemd service status"
+	@echo "  systemd-logs     - Follow systemd service logs"
 	@echo "  clean            - Clean build artifacts"
