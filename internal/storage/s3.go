@@ -54,6 +54,10 @@ func NewS3Storage(cfg S3StorageConfig) (*S3Storage, error) {
 		opts = append(opts, config.WithRegion(cfg.Region))
 	}
 
+	// 禁用自动请求 checksum 计算，避免 SDK 使用 aws-chunked 编码
+	//（阿里云 OSS 不支持 aws-chunked）
+	opts = append(opts, config.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired))
+
 	// 加载配置
 	awsConfig, err := config.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
