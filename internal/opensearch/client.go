@@ -27,7 +27,7 @@ type Client struct {
 // NewClient 创建新的 OpenSearch 客户端
 func NewClient(cfg *config.OpenSearchConfig, logger *zap.Logger) (*Client, error) {
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: !cfg.Secure,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
 	}
 
 	apiClient, err := opensearchapi.NewClient(opensearchapi.Config{

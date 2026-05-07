@@ -40,12 +40,13 @@ type ServerConfig struct {
 
 // OpenSearchConfig OpenSearch 配置
 type OpenSearchConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	Secure   bool   `mapstructure:"secure"`
-	IndexPrefix string `mapstructure:"index_prefix"`
+	Host                string `mapstructure:"host"`
+	Port                int    `mapstructure:"port"`
+	Username            string `mapstructure:"username"`
+	Password            string `mapstructure:"password"`
+	Secure              bool   `mapstructure:"secure"`
+	InsecureSkipVerify  bool   `mapstructure:"insecure_skip_verify"`
+	IndexPrefix         string `mapstructure:"index_prefix"`
 }
 
 // StorageConfig 存储配置
@@ -131,6 +132,7 @@ func setDefaults() {
 	viper.SetDefault("opensearch.username", "admin")
 	viper.SetDefault("opensearch.password", "admin")
 	viper.SetDefault("opensearch.secure", true)
+	viper.SetDefault("opensearch.insecure_skip_verify", true)
 	viper.SetDefault("opensearch.index_prefix", "tenant")
 
 	// Storage
