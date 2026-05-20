@@ -93,7 +93,7 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 		zap.Int64("size", header.Size))
 
 	// 使用索引器处理文件
-	result, err := h.indexer.IndexFile(c.Request.Context(), tenantID, header.Filename, file)
+	result, err := h.indexer.IndexFile(c.Request.Context(), tenantID, header.Filename, description, tags, file)
 	if err != nil {
 		h.logger.Error("failed to index file",
 			zap.String("tenant_id", tenantID),
@@ -104,21 +104,6 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 			Error:   err.Error(),
 		})
 		return
-	}
-
-	// 更新额外元数据（如果需要）
-	if description != "" || len(tags) > 0 {
-		doc, err := h.indexer.GetFileMetadata(c.Request.Context(), tenantID, result.FileID)
-		if err == nil && doc != nil {
-			if description != "" {
-				doc["description"] = description
-			}
-			if len(tags) > 0 {
-				doc["tags"] = tags
-			}
-			// TODO: 添加更新方法到 indexer
-			_ = doc
-		}
 	}
 
 	c.JSON(http.StatusOK, FileUploadResponse{

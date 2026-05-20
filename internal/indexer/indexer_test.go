@@ -130,7 +130,7 @@ func TestIndexer_IndexFile(t *testing.T) {
 		filename := "test.txt"
 		content := "This is test content"
 
-		result, err := indexer.IndexFile(ctx, tenantID, filename, strings.NewReader(content))
+		result, err := indexer.IndexFile(ctx, tenantID, filename, "test description", []string{"tag1", "tag2"}, strings.NewReader(content))
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Equal(t, tenantID, result.TenantID)
@@ -151,7 +151,7 @@ func TestIndexer_IndexFile(t *testing.T) {
 		filename := "test.bin"
 		content := "binary content"
 
-		result, err := indexerNoExtract.IndexFile(ctx, tenantID, filename, strings.NewReader(content))
+		result, err := indexerNoExtract.IndexFile(ctx, tenantID, filename, "", nil, strings.NewReader(content))
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Equal(t, tenantID, result.TenantID)

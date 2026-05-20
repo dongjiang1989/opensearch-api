@@ -74,7 +74,7 @@ type IndexResult struct {
 }
 
 // IndexFile 索引文件
-func (i *Indexer) IndexFile(ctx context.Context, tenantID, filename string, reader io.Reader) (*IndexResult, error) {
+func (i *Indexer) IndexFile(ctx context.Context, tenantID, filename, description string, tags []string, reader io.Reader) (*IndexResult, error) {
 	// 生成文件 ID
 	fileID := uuid.New().String()
 
@@ -155,7 +155,7 @@ func (i *Indexer) IndexFile(ctx context.Context, tenantID, filename string, read
 	}
 
 	// 构建索引文档
-	doc := i.buildIndexDocument(tenantID, fileID, filename, contentType, fileType, metadata, extracted)
+	doc := i.buildIndexDocument(tenantID, fileID, filename, contentType, fileType, metadata, extracted, description, tags)
 
 	// 索引到 OpenSearch
 	if err := i.osClient.IndexDocument(ctx, tenantID, fileID, doc); err != nil {
@@ -190,6 +190,8 @@ func (i *Indexer) buildIndexDocument(
 	fileType storage.FileType,
 	fileMetadata *storage.FileMetadata,
 	extracted *storage.ExtractedContent,
+	description string,
+	tags []string,
 ) map[string]interface{} {
 	now := time.Now()
 
@@ -201,8 +203,8 @@ func (i *Indexer) buildIndexDocument(
 		"file_size":    fileMetadata.FileSize,
 		"storage_path": fileMetadata.StoragePath,
 		"tenant_id":    tenantID,
-		"description":  fileMetadata.Description,
-		"tags":         fileMetadata.Tags,
+		"description":  description,
+		"tags":         tags,
 		"created_at":   now.Format(time.RFC3339),
 		"updated_at":   now.Format(time.RFC3339),
 	}
