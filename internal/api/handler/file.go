@@ -85,7 +85,11 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 
 	// 读取额外字段
 	description := c.PostForm("description")
-	tags := c.PostFormArray("tags")
+	// 兼容 tags[] (HTML 表单标准) 和 tags 两种传参方式
+	tags := c.PostFormArray("tags[]")
+	if len(tags) == 0 {
+		tags = c.PostFormArray("tags")
+	}
 
 	h.logger.Debug("uploading file",
 		zap.String("tenant_id", tenantID),
