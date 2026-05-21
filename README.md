@@ -255,6 +255,65 @@ curl -X DELETE http://localhost:18080/api/v1/admin/tenants/tenant-1
 curl -X DELETE http://localhost:18080/api/v1/admin/tenants/tenant-1/hard
 ```
 
+## 多租户搜索
+
+支持通过 `X-Tenant-ID` 传入多个租户（逗号分隔），实现跨租户联合搜索。
+
+```bash
+# 跨租户全文搜索
+curl -X POST http://localhost:18080/api/v1/search \
+  -H "Authorization: Bearer <token>" \
+  -H "X-Tenant-ID: tenant-a,tenant-b" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "合同",
+    "size": 20
+  }'
+
+# 跨租户 KNN 向量搜索
+curl -X POST http://localhost:18080/api/v1/search/knn \
+  -H "Authorization: Bearer <token>" \
+  -H "X-Tenant-ID: tenant-a,tenant-b" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vector": [0.1, 0.2, 0.3, ...],
+    "k": 10
+  }'
+
+# 跨租户混合搜索
+curl -X POST http://localhost:18080/api/v1/search/hybrid \
+  -H "Authorization: Bearer <token>" \
+  -H "X-Tenant-ID: tenant-a,tenant-b" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "合同条款",
+    "vector": [0.1, 0.2, 0.3, ...],
+    "k": 10
+  }'
+
+# 跨租户聚合统计（含每租户细分）
+curl -X POST http://localhost:18080/api/v1/search/aggregate \
+  -H "Authorization: Bearer <token>" \
+  -H "X-Tenant-ID: tenant-a,tenant-b" \
+  -H "Content-Type: application/json" \
+  -d '{"field": "file_type"}'
+
+# 跨租户文件计数
+curl -X GET http://localhost:18080/api/v1/search/count \
+  -H "Authorization: Bearer <token>" \
+  -H "X-Tenant-ID: tenant-a,tenant-b"
+```
+
+### 跨索引 Score 归一化（D11）
+
+多租户搜索使用 OpenSearch `dfs_query_then_fetch` 搜索类型，在所有分片上收集词频信息后再评分，消除各租户独立索引带来的 IDF 偏差。搜索结果中每个 hit 携带 `index` 字段标识来源索引。
+
+### 聚合租户细分（D12）
+
+聚合查询返回两个维度的结果：
+- `buckets`：合并后的总体聚合结果（向后兼容）
+- `by_tenant`：每租户维度的细分数据（`tenantID -> field_value -> count`）
+
 ## 配置
 
 ### 配置文件
@@ -355,7 +414,7 @@ bash scripts/test_e2e.sh
 bash scripts/test_e2e_embedding.sh
 ```
 
-E2E 测试覆盖：租户管理 → JWT 生成 → 文件上传 → 文件操作 → 文本搜索 → 租户隔离 → 向量搜索（KNN/混合/自动Embedding检索） → 聚合统计 → 健康检查
+E2E 测试覆盖：租户管理 → JWT 生成 → 文件上传 → 文件操作 → 文本搜索 → 租户隔离 → 向量搜索（KNN/混合/自动Embedding检索） → 单租户检索 → **跨租户联合搜索** → 聚合统计（含租户细分）→ 健康检查
 
 Embedding E2E 测试覆盖：启动 mock embedding server → 重启 app（启用 embedding） → 上传文件（自动生成向量） → retrieve JSON 模式 → retrieve multipart 模式 → 文件+query 混合模式
 
@@ -523,11 +582,11 @@ make swag
 | `/api/v1/files` | POST/GET | 是 | 上传文件/列出文件 |
 | `/api/v1/files/:id` | GET/DELETE | 是 | 下载文件/删除文件 |
 | `/api/v1/files/:id/metadata` | GET | 是 | 获取文件元数据 |
-| `/api/v1/search` | GET/POST | 是 | 搜索文件 |
-| `/api/v1/search/aggregate` | POST | 是 | 聚合查询 |
-| `/api/v1/search/count` | GET | 是 | 统计文件数量 |
-| `/api/v1/search/knn` | POST | 是 | KNN 向量搜索 |
-| `/api/v1/search/hybrid` | POST | 是 | 混合搜索（文本 + 向量） |
+| `/api/v1/search` | GET/POST | 是 | 搜索文件（支持多租户，逗号分隔 `X-Tenant-ID`） |
+| `/api/v1/search/aggregate` | POST | 是 | 聚合查询（返回 `buckets` + `by_tenant` 细分） |
+| `/api/v1/search/count` | GET | 是 | 统计文件数量（支持多租户） |
+| `/api/v1/search/knn` | POST | 是 | KNN 向量搜索（支持多租户） |
+| `/api/v1/search/hybrid` | POST | 是 | 混合搜索（文本 + 向量，支持多租户） |
 | `/api/v1/search/retrieve` | POST | 是 | 向量检索（自动 Embedding） |
 
 ## License

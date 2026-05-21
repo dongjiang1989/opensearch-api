@@ -64,8 +64,8 @@ type RetrieveResponse struct {
 // @Security X-Tenant-ID
 // @Router /search/retrieve [post]
 func (h *RetrieveHandler) Retrieve(c *gin.Context) {
-	tenantID, ok := middleware.GetTenantID(c)
-	if !ok || tenantID == "" {
+	tenantIDs, ok := middleware.GetTenantIDs(c)
+	if !ok || len(tenantIDs) == 0 {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Success: false,
 			Error:   "tenant ID is required",
@@ -119,7 +119,7 @@ func (h *RetrieveHandler) Retrieve(c *gin.Context) {
 	vector, err := h.embedder.Generate(c.Request.Context(), text)
 	if err != nil {
 		h.logger.Error("failed to generate embedding",
-			zap.String("tenant_id", tenantID),
+			zap.Strings("tenant_ids", tenantIDs),
 			zap.Error(err))
 
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -137,10 +137,10 @@ func (h *RetrieveHandler) Retrieve(c *gin.Context) {
 		Filters: nil,
 	}
 
-	result, err := h.osClient.KNNSearch(c.Request.Context(), tenantID, knnQuery)
+	result, err := h.osClient.KNNSearch(c.Request.Context(), tenantIDs, knnQuery)
 	if err != nil {
 		h.logger.Error("knn retrieve failed",
-			zap.String("tenant_id", tenantID),
+			zap.Strings("tenant_ids", tenantIDs),
 			zap.Error(err))
 
 		c.JSON(http.StatusInternalServerError, ErrorResponse{

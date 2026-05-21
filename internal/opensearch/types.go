@@ -41,10 +41,24 @@ type SearchHit struct {
 	Score     float64                // 评分
 	Source    map[string]interface{} // 文档源数据
 	Highlight map[string]interface{} // 高亮片段
+	Index     string                 // 来源索引名称（用于跨索引归一化）
 }
 
 // BulkDoc 批量索引文档结构
 type BulkDoc struct {
 	ID     string
 	Source map[string]interface{}
+}
+
+// TenantBucket 单租户聚合桶
+type TenantBucket struct {
+	TenantID string
+	Buckets  map[string]int64 // field_value -> doc_count
+}
+
+// AggregateResult 聚合结果（含每租户维度）
+type AggregateResult struct {
+	Field   string
+	Buckets map[string]int64    // 合并后的聚合结果（向后兼容）
+	ByTenant map[string]map[string]int64 // tenantID -> (field_value -> doc_count)
 }

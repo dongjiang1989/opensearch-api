@@ -91,6 +91,7 @@ func TestRetrieveHandler_Retrieve_JSON_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -121,6 +122,7 @@ func TestRetrieveHandler_Retrieve_JSON_MissingQuery(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -165,6 +167,7 @@ func TestRetrieveHandler_Retrieve_EmbedderNotConfigured(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -205,6 +208,7 @@ func TestRetrieveHandler_Retrieve_Multipart_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -241,6 +245,7 @@ func TestRetrieveHandler_Retrieve_Multipart_MissingFile(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -269,6 +274,7 @@ func TestRetrieveHandler_Retrieve_InvalidContentType(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -294,6 +300,7 @@ func TestRetrieveHandler_Retrieve_EmbedderError(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})

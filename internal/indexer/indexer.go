@@ -20,14 +20,14 @@ type OpenSearchClient interface {
 	IndexDocument(ctx context.Context, tenantID, docID string, doc map[string]interface{}) error
 	GetDocument(ctx context.Context, tenantID, docID string) (map[string]interface{}, error)
 	DeleteDocument(ctx context.Context, tenantID, docID string) error
-	Search(ctx context.Context, tenantID string, query *opensearch.SearchQuery) (*opensearch.SearchResult, error)
-	KNNSearch(ctx context.Context, tenantID string, query *opensearch.KNNQuery) (*opensearch.SearchResult, error)
-	HybridSearch(ctx context.Context, tenantID string, query *opensearch.HybridQuery) (*opensearch.SearchResult, error)
+	Search(ctx context.Context, tenantIDs []string, query *opensearch.SearchQuery) (*opensearch.SearchResult, error)
+	KNNSearch(ctx context.Context, tenantIDs []string, query *opensearch.KNNQuery) (*opensearch.SearchResult, error)
+	HybridSearch(ctx context.Context, tenantIDs []string, query *opensearch.HybridQuery) (*opensearch.SearchResult, error)
 	IndexName(tenantID string) string
 	Health(ctx context.Context) (map[string]interface{}, error)
 	Ping(ctx context.Context) error
-	Count(ctx context.Context, tenantID string) (int64, error)
-	Aggregate(ctx context.Context, tenantID, fieldName string) (map[string]int64, error)
+	Count(ctx context.Context, tenantIDs []string) (int64, error)
+	Aggregate(ctx context.Context, tenantIDs []string, fieldName string) (*opensearch.AggregateResult, error)
 }
 
 // Indexer 文件索引器
@@ -246,8 +246,8 @@ func (i *Indexer) DeleteFile(ctx context.Context, tenantID, fileID string) error
 }
 
 // SearchFiles 搜索文件
-func (i *Indexer) SearchFiles(ctx context.Context, tenantID string, query *opensearch.SearchQuery) (*opensearch.SearchResult, error) {
-	return i.osClient.Search(ctx, tenantID, query)
+func (i *Indexer) SearchFiles(ctx context.Context, tenantIDs []string, query *opensearch.SearchQuery) (*opensearch.SearchResult, error) {
+	return i.osClient.Search(ctx, tenantIDs, query)
 }
 
 // GetFileMetadata 获取文件元数据

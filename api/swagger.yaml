@@ -13,6 +13,15 @@ definitions:
         additionalProperties:
           format: int64
           type: integer
+        description: 合并后的聚合结果（向后兼容）
+        type: object
+      by_tenant:
+        additionalProperties:
+          additionalProperties:
+            format: int64
+            type: integer
+          type: object
+        description: 每租户维度的聚合结果（tenantID -> field_value -> count）
         type: object
       field:
         type: string
@@ -186,6 +195,9 @@ definitions:
         type: object
       id:
         type: string
+      index:
+        description: 来源索引名称（跨租户搜索时用于标识来源）
+        type: string
       score:
         type: number
       source:
@@ -236,6 +248,9 @@ definitions:
   internal_api_handler.VectorHit:
     properties:
       id:
+        type: string
+      index:
+        description: 来源索引名称（跨租户搜索时用于标识来源）
         type: string
       score:
         type: number
@@ -662,7 +677,7 @@ paths:
       - Health
   /search:
     get:
-      description: 使用 URL 查询参数进行搜索
+      description: 使用 URL 查询参数进行搜索。支持多租户联合搜索，X-Tenant-ID 可传入逗号分隔的多个租户 ID。
       parameters:
       - description: 搜索关键词
         in: query
@@ -710,7 +725,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: 使用 JSON 请求体进行全文搜索、过滤和排序
+      description: 使用 JSON 请求体进行全文搜索、过滤和排序。支持多租户联合搜索，X-Tenant-ID 可传入逗号分隔的多个租户 ID。使用
+        dfs_query_then_fetch 实现跨索引 Score 归一化。
       parameters:
       - description: 搜索请求
         in: body
@@ -743,7 +759,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 按指定字段聚合统计
+      description: 按指定字段聚合统计。单租户时返回合并结果，多租户时额外返回每租户维度的细分数据（by_tenant）。
       parameters:
       - description: 聚合请求
         in: body
@@ -774,7 +790,7 @@ paths:
       - Search
   /search/count:
     get:
-      description: 统计当前租户下的文件总数
+      description: 统计当前租户下的文件总数。支持多租户联合计数。
       produces:
       - application/json
       responses:
@@ -800,7 +816,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 结合文本关键词和向量进行混合搜索，同时匹配文本相关性和向量相似性
+      description: 结合文本关键词和向量进行混合搜索，同时匹配文本相关性和向量相似性。支持多租户联合搜索。
       parameters:
       - description: 混合搜索请求
         in: body
@@ -833,7 +849,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 使用向量进行 K 近邻搜索，支持 content_vector (1536维) 和 image_vector (512维)
+      description: 使用向量进行 K 近邻搜索，支持 content_vector (1536维) 和 image_vector (512维)。支持多租户联合搜索。
       parameters:
       - description: KNN 搜索请求
         in: body
