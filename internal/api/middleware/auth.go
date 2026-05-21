@@ -229,7 +229,7 @@ func (m *TenantMiddleware) Middleware() gin.HandlerFunc {
 
 		// 3. 合并租户 ID 列表
 		var tenantIDs []string
-		source := "header"
+		var source string
 
 		if jwtTenantID != "" && len(headerIDs) > 0 {
 			// JWT 和 Header 同时存在：Header 必须以 JWT 租户开头
