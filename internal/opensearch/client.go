@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/opensearch-project/opensearch-go/v3"
 	"github.com/opensearch-project/opensearch-go/v3/opensearchapi"
@@ -71,8 +72,28 @@ func (c *Client) CreateIndex(ctx context.Context, tenantID string, mapping map[s
 		return err
 	}
 	if exists {
-		c.logger.Info("index already exists", zap.String("index", indexName))
-		return nil
+		// 验证现有索引的 mapping 是否正确（knn_vector 字段）
+		ok, err := c.verifyMapping(ctx, indexName, mapping)
+		if err != nil {
+			c.logger.Warn("failed to verify index mapping, skipping recreation",
+				zap.String("index", indexName),
+				zap.Error(err))
+			return nil
+		}
+		if !ok {
+			// mapping 不匹配，删除并重建
+			c.logger.Info("index mapping mismatch, recreating index",
+				zap.String("index", indexName))
+			if err := c.DeleteIndexByTenantID(ctx, tenantID); err != nil {
+				c.logger.Warn("failed to delete index with mismatched mapping",
+					zap.String("index", indexName),
+					zap.Error(err))
+				return nil
+			}
+		} else {
+			c.logger.Info("index already exists with correct mapping", zap.String("index", indexName))
+			return nil
+		}
 	}
 
 	// 创建索引
@@ -101,6 +122,72 @@ func (c *Client) CreateIndex(ctx context.Context, tenantID string, mapping map[s
 
 	c.logger.Info("index created", zap.String("index", indexName))
 	return nil
+}
+
+// verifyMapping 验证现有索引的 mapping 是否包含 knn_vector 字段
+func (c *Client) verifyMapping(ctx context.Context, indexName string, expectedMapping map[string]interface{}) (bool, error) {
+	// 使用原始 HTTP 请求获取 mapping
+	req, err := http.NewRequestWithContext(ctx, "GET", c.config.URL()+"/"+indexName+"/_mapping", nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create mapping request: %w", err)
+	}
+	req.SetBasicAuth(c.config.Username, c.config.Password)
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: c.config.InsecureSkipVerify},
+		},
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("failed to get mapping: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return false, fmt.Errorf("get mapping failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, fmt.Errorf("failed to parse mapping response: %w", err)
+	}
+
+	// 获取索引的 mappings
+	indexData, ok := result[indexName].(map[string]interface{})
+	if !ok {
+		return false, nil
+	}
+
+	mappings, ok := indexData["mappings"].(map[string]interface{})
+	if !ok {
+		return false, nil
+	}
+
+	properties, ok := mappings["properties"].(map[string]interface{})
+	if !ok {
+		return false, nil
+	}
+
+	// 检查 content_vector 字段是否为 knn_vector 类型
+	if contentVector, exists := properties["content_vector"]; exists {
+		if fieldMap, ok := contentVector.(map[string]interface{}); ok {
+			if fieldType, ok := fieldMap["type"].(string); ok {
+				return fieldType == "knn_vector", nil
+			}
+		}
+	}
+
+	// 如果 content_vector 字段不存在，说明 mapping 不正确
+	return false, nil
+}
+
+// DeleteIndexByTenantID 通过租户 ID 删除索引
+func (c *Client) DeleteIndexByTenantID(ctx context.Context, tenantID string) error {
+	return c.DeleteIndex(ctx, tenantID)
 }
 
 // IndexExists 检查索引是否存在
