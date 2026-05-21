@@ -246,6 +246,175 @@ func TestTenantMiddleware_Required(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "tenant ID not provided")
 }
 
+func TestTenantMiddleware_MultiTenant(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+
+	middleware := NewTenantMiddleware(TenantMiddlewareConfig{
+		HeaderName:    "X-Tenant-ID",
+		RequireTenant: false,
+		Logger:        logger,
+	})
+
+	router := gin.New()
+	router.Use(middleware.Middleware())
+	router.GET("/test", func(c *gin.Context) {
+		tenantIDs, _ := GetTenantIDs(c)
+		c.JSON(http.StatusOK, gin.H{"tenant_ids": tenantIDs})
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-a,tenant-b,tenant-c")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "tenant-a")
+	assert.Contains(t, w.Body.String(), "tenant-b")
+	assert.Contains(t, w.Body.String(), "tenant-c")
+}
+
+func TestTenantMiddleware_MultiTenant_Dedup(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+
+	middleware := NewTenantMiddleware(TenantMiddlewareConfig{
+		HeaderName:    "X-Tenant-ID",
+		RequireTenant: false,
+		Logger:        logger,
+	})
+
+	router := gin.New()
+	router.Use(middleware.Middleware())
+	router.GET("/test", func(c *gin.Context) {
+		tenantIDs, _ := GetTenantIDs(c)
+		c.JSON(http.StatusOK, gin.H{"count": len(tenantIDs)})
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-a,tenant-a,tenant-b")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"count":2`)
+}
+
+func TestTenantMiddleware_JWTPlusHeader_Match(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	secret := "test-secret"
+
+	authMW := NewAuthMiddleware(AuthMiddlewareConfig{
+		Secret:    secret,
+		Issuer:    "test-issuer",
+		Logger:    logger,
+		SkipPaths: []string{},
+	})
+
+	tenantMW := NewTenantMiddleware(TenantMiddlewareConfig{
+		HeaderName:    "X-Tenant-ID",
+		RequireTenant: true,
+		Logger:        logger,
+	})
+
+	claims := &tenant.Claims{
+		TenantID: "tenant-a",
+		Role:     "admin",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			Issuer:    "test-issuer",
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, _ := token.SignedString([]byte(secret))
+
+	router := gin.New()
+	router.Use(authMW.Middleware())
+	router.Use(tenantMW.Middleware())
+	router.GET("/test", func(c *gin.Context) {
+		tenantIDs, _ := GetTenantIDs(c)
+		c.JSON(http.StatusOK, gin.H{"tenant_ids": tenantIDs})
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+	req.Header.Set("X-Tenant-ID", "tenant-a,tenant-b")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "tenant-a")
+	assert.Contains(t, w.Body.String(), "tenant-b")
+}
+
+func TestTenantMiddleware_JWTPlusHeader_Mismatch(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	secret := "test-secret"
+
+	authMW := NewAuthMiddleware(AuthMiddlewareConfig{
+		Secret:    secret,
+		Issuer:    "test-issuer",
+		Logger:    logger,
+		SkipPaths: []string{},
+	})
+
+	tenantMW := NewTenantMiddleware(TenantMiddlewareConfig{
+		HeaderName:    "X-Tenant-ID",
+		RequireTenant: true,
+		Logger:        logger,
+	})
+
+	claims := &tenant.Claims{
+		TenantID: "tenant-a",
+		Role:     "admin",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			Issuer:    "test-issuer",
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, _ := token.SignedString([]byte(secret))
+
+	router := gin.New()
+	router.Use(authMW.Middleware())
+	router.Use(tenantMW.Middleware())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+	req.Header.Set("X-Tenant-ID", "tenant-b,tenant-c")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "first tenant ID")
+}
+
+func TestTenantMiddleware_TooManyTenants(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+
+	middleware := NewTenantMiddleware(TenantMiddlewareConfig{
+		HeaderName:    "X-Tenant-ID",
+		RequireTenant: true,
+		MaxTenants:    3,
+		Logger:        logger,
+	})
+
+	router := gin.New()
+	router.Use(middleware.Middleware())
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"success": true})
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Tenant-ID", "a,b,c,d,e")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "too many tenant IDs")
+}
+
 func TestGenerateToken(t *testing.T) {
 	secret := "test-secret"
 	issuer := "test-issuer"

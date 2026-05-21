@@ -42,6 +42,7 @@ func TestSearchHandler_Search_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -85,6 +86,7 @@ func TestSearchHandler_Search_InvalidJSON(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -114,6 +116,7 @@ func TestSearchHandler_SearchGET_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -149,11 +152,11 @@ func TestSearchHandler_Aggregate_Success(t *testing.T) {
 	mockClient := opensearch.NewMockClient()
 
 	// Add documents with different file_type values
-	_ = mockClient.IndexDocument(context.Background(), "tenant_test-tenant_files", "doc1", map[string]interface{}{
+	_ = mockClient.IndexDocument(context.Background(), "test-tenant", "doc1", map[string]interface{}{
 		"filename":  "test1.pdf",
 		"file_type": "pdf",
 	})
-	_ = mockClient.IndexDocument(context.Background(), "tenant_test-tenant_files", "doc2", map[string]interface{}{
+	_ = mockClient.IndexDocument(context.Background(), "test-tenant", "doc2", map[string]interface{}{
 		"filename":  "test2.docx",
 		"file_type": "docx",
 	})
@@ -162,6 +165,7 @@ func TestSearchHandler_Aggregate_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -177,6 +181,7 @@ func TestSearchHandler_Aggregate_Success(t *testing.T) {
 	assert.Contains(t, w.Body.String(), `"success":true`)
 	assert.Contains(t, w.Body.String(), `"field":"file_type"`)
 	assert.Contains(t, w.Body.String(), `"buckets"`)
+	assert.Contains(t, w.Body.String(), `"by_tenant"`)
 }
 
 func TestSearchHandler_Aggregate_MissingTenant(t *testing.T) {
@@ -206,6 +211,7 @@ func TestSearchHandler_Aggregate_InvalidJSON(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -236,6 +242,7 @@ func TestSearchHandler_Count_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})

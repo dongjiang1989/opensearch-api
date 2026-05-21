@@ -49,11 +49,12 @@ type SearchHit struct {
 	Score     float64                `json:"score"`
 	Source    map[string]interface{} `json:"source"`
 	Highlight map[string]interface{} `json:"highlight,omitempty"`
+	Index     string                 `json:"index,omitempty"` // 来源索引名称（跨租户搜索时用于标识来源）
 }
 
 // Search 搜索接口
 // @Summary 搜索文件（POST 高级搜索）
-// @Description 使用 JSON 请求体进行全文搜索、过滤和排序
+// @Description 使用 JSON 请求体进行全文搜索、过滤和排序。支持多租户联合搜索，X-Tenant-ID 可传入逗号分隔的多个租户 ID。使用 dfs_query_then_fetch 实现跨索引 Score 归一化。
 // @Tags Search
 // @Accept json
 // @Produce json
@@ -65,8 +66,8 @@ type SearchHit struct {
 // @Security X-Tenant-ID
 // @Router /search [post]
 func (h *SearchHandler) Search(c *gin.Context) {
-	tenantID, ok := middleware.GetTenantID(c)
-	if !ok || tenantID == "" {
+	tenantIDs, ok := middleware.GetTenantIDs(c)
+	if !ok || len(tenantIDs) == 0 {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Success: false,
 			Error:   "tenant ID is required",
@@ -101,13 +102,13 @@ func (h *SearchHandler) Search(c *gin.Context) {
 	}
 
 	h.logger.Debug("searching files",
-		zap.String("tenant_id", tenantID),
+		zap.Strings("tenant_ids", tenantIDs),
 		zap.String("query", req.Query))
 
-	result, err := h.osClient.Search(c.Request.Context(), tenantID, query)
+	result, err := h.osClient.Search(c.Request.Context(), tenantIDs, query)
 	if err != nil {
 		h.logger.Error("search failed",
-			zap.String("tenant_id", tenantID),
+			zap.Strings("tenant_ids", tenantIDs),
 			zap.Error(err))
 
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -124,6 +125,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 			Score:     hit.Score,
 			Source:    hit.Source,
 			Highlight: hit.Highlight,
+			Index:     hit.Index,
 		})
 	}
 
@@ -137,7 +139,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 
 // SearchGET GET 搜索接口（使用查询参数）
 // @Summary 搜索文件（GET）
-// @Description 使用 URL 查询参数进行搜索
+// @Description 使用 URL 查询参数进行搜索。支持多租户联合搜索，X-Tenant-ID 可传入逗号分隔的多个租户 ID。
 // @Tags Search
 // @Produce json
 // @Param q query string false "搜索关键词"
@@ -152,8 +154,8 @@ func (h *SearchHandler) Search(c *gin.Context) {
 // @Security X-Tenant-ID
 // @Router /search [get]
 func (h *SearchHandler) SearchGET(c *gin.Context) {
-	tenantID, ok := middleware.GetTenantID(c)
-	if !ok || tenantID == "" {
+	tenantIDs, ok := middleware.GetTenantIDs(c)
+	if !ok || len(tenantIDs) == 0 {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Success: false,
 			Error:   "tenant ID is required",
@@ -161,12 +163,12 @@ func (h *SearchHandler) SearchGET(c *gin.Context) {
 		return
 	}
 
-	query := c.Query("q")
+	queryStr := c.Query("q")
 	fileType := c.Query("file_type")
 	contentType := c.Query("content_type")
 
 	searchQuery := &opensearch.SearchQuery{
-		Query: query,
+		Query: queryStr,
 		From:  0,
 		Size:  10,
 	}
@@ -199,13 +201,13 @@ func (h *SearchHandler) SearchGET(c *gin.Context) {
 	}
 
 	h.logger.Debug("searching files (GET)",
-		zap.String("tenant_id", tenantID),
-		zap.String("query", query))
+		zap.Strings("tenant_ids", tenantIDs),
+		zap.String("query", queryStr))
 
-	result, err := h.osClient.Search(c.Request.Context(), tenantID, searchQuery)
+	result, err := h.osClient.Search(c.Request.Context(), tenantIDs, searchQuery)
 	if err != nil {
 		h.logger.Error("search failed",
-			zap.String("tenant_id", tenantID),
+			zap.Strings("tenant_ids", tenantIDs),
 			zap.Error(err))
 
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -221,6 +223,7 @@ func (h *SearchHandler) SearchGET(c *gin.Context) {
 			ID:     hit.ID,
 			Score:  hit.Score,
 			Source: hit.Source,
+			Index:  hit.Index,
 		})
 	}
 
@@ -239,14 +242,15 @@ type AggregateRequest struct {
 
 // AggregateResponse 聚合响应
 type AggregateResponse struct {
-	Success bool              `json:"success"`
-	Field   string            `json:"field"`
-	Buckets map[string]int64  `json:"buckets"`
+	Success  bool                            `json:"success"`
+	Field    string                          `json:"field"`
+	Buckets  map[string]int64                `json:"buckets"`               // 合并后的聚合结果（向后兼容）
+	ByTenant map[string]map[string]int64     `json:"by_tenant,omitempty"` // 每租户维度的聚合结果（tenantID -> field_value -> count）
 }
 
 // Aggregate 聚合接口
 // @Summary 聚合查询
-// @Description 按指定字段聚合统计
+// @Description 按指定字段聚合统计。单租户时返回合并结果，多租户时额外返回每租户维度的细分数据（by_tenant）。
 // @Tags Search
 // @Accept json
 // @Produce json
@@ -258,8 +262,8 @@ type AggregateResponse struct {
 // @Security X-Tenant-ID
 // @Router /search/aggregate [post]
 func (h *SearchHandler) Aggregate(c *gin.Context) {
-	tenantID, ok := middleware.GetTenantID(c)
-	if !ok || tenantID == "" {
+	tenantIDs, ok := middleware.GetTenantIDs(c)
+	if !ok || len(tenantIDs) == 0 {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Success: false,
 			Error:   "tenant ID is required",
@@ -276,10 +280,10 @@ func (h *SearchHandler) Aggregate(c *gin.Context) {
 		return
 	}
 
-	buckets, err := h.osClient.Aggregate(c.Request.Context(), tenantID, req.Field)
+	result, err := h.osClient.Aggregate(c.Request.Context(), tenantIDs, req.Field)
 	if err != nil {
 		h.logger.Error("aggregation failed",
-			zap.String("tenant_id", tenantID),
+			zap.Strings("tenant_ids", tenantIDs),
 			zap.Error(err))
 
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -290,9 +294,10 @@ func (h *SearchHandler) Aggregate(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, AggregateResponse{
-		Success: true,
-		Field:   req.Field,
-		Buckets: buckets,
+		Success:  true,
+		Field:    result.Field,
+		Buckets:  result.Buckets,
+		ByTenant: result.ByTenant,
 	})
 }
 
@@ -304,7 +309,7 @@ type CountResponse struct {
 
 // Count 统计文件数量
 // @Summary 统计文件数量
-// @Description 统计当前租户下的文件总数
+// @Description 统计当前租户下的文件总数。支持多租户联合计数。
 // @Tags Search
 // @Produce json
 // @Success 200 {object} CountResponse
@@ -314,8 +319,8 @@ type CountResponse struct {
 // @Security X-Tenant-ID
 // @Router /search/count [get]
 func (h *SearchHandler) Count(c *gin.Context) {
-	tenantID, ok := middleware.GetTenantID(c)
-	if !ok || tenantID == "" {
+	tenantIDs, ok := middleware.GetTenantIDs(c)
+	if !ok || len(tenantIDs) == 0 {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Success: false,
 			Error:   "tenant ID is required",
@@ -323,10 +328,10 @@ func (h *SearchHandler) Count(c *gin.Context) {
 		return
 	}
 
-	count, err := h.osClient.Count(c.Request.Context(), tenantID)
+	count, err := h.osClient.Count(c.Request.Context(), tenantIDs)
 	if err != nil {
 		h.logger.Error("count failed",
-			zap.String("tenant_id", tenantID),
+			zap.Strings("tenant_ids", tenantIDs),
 			zap.Error(err))
 
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -363,11 +368,12 @@ type VectorHit struct {
 	ID     string                 `json:"id"`
 	Score  float64                `json:"score"`
 	Source map[string]interface{} `json:"source"`
+	Index  string                 `json:"index,omitempty"` // 来源索引名称（跨租户搜索时用于标识来源）
 }
 
 // KNNSearch KNN 向量搜索接口
 // @Summary KNN 向量搜索
-// @Description 使用向量进行 K 近邻搜索，支持 content_vector (1536维) 和 image_vector (512维)
+// @Description 使用向量进行 K 近邻搜索，支持 content_vector (1536维) 和 image_vector (512维)。支持多租户联合搜索。
 // @Tags Vector Search
 // @Accept json
 // @Produce json
@@ -379,8 +385,8 @@ type VectorHit struct {
 // @Security X-Tenant-ID
 // @Router /search/knn [post]
 func (h *SearchHandler) KNNSearch(c *gin.Context) {
-	tenantID, ok := middleware.GetTenantID(c)
-	if !ok || tenantID == "" {
+	tenantIDs, ok := middleware.GetTenantIDs(c)
+	if !ok || len(tenantIDs) == 0 {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Success: false,
 			Error:   "tenant ID is required",
@@ -415,10 +421,10 @@ func (h *SearchHandler) KNNSearch(c *gin.Context) {
 		Filters: req.Filters,
 	}
 
-	result, err := h.osClient.KNNSearch(c.Request.Context(), tenantID, query)
+	result, err := h.osClient.KNNSearch(c.Request.Context(), tenantIDs, query)
 	if err != nil {
 		h.logger.Error("knn search failed",
-			zap.String("tenant_id", tenantID),
+			zap.Strings("tenant_ids", tenantIDs),
 			zap.Error(err))
 
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -434,6 +440,7 @@ func (h *SearchHandler) KNNSearch(c *gin.Context) {
 			ID:     hit.ID,
 			Score:  hit.Score,
 			Source: hit.Source,
+			Index:  hit.Index,
 		})
 	}
 
@@ -456,7 +463,7 @@ type HybridSearchRequest struct {
 
 // HybridSearch 混合搜索接口（文本 + 向量）
 // @Summary 混合搜索（文本 + 向量）
-// @Description 结合文本关键词和向量进行混合搜索，同时匹配文本相关性和向量相似性
+// @Description 结合文本关键词和向量进行混合搜索，同时匹配文本相关性和向量相似性。支持多租户联合搜索。
 // @Tags Vector Search
 // @Accept json
 // @Produce json
@@ -468,8 +475,8 @@ type HybridSearchRequest struct {
 // @Security X-Tenant-ID
 // @Router /search/hybrid [post]
 func (h *SearchHandler) HybridSearch(c *gin.Context) {
-	tenantID, ok := middleware.GetTenantID(c)
-	if !ok || tenantID == "" {
+	tenantIDs, ok := middleware.GetTenantIDs(c)
+	if !ok || len(tenantIDs) == 0 {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Success: false,
 			Error:   "tenant ID is required",
@@ -505,10 +512,10 @@ func (h *SearchHandler) HybridSearch(c *gin.Context) {
 		Filters:     req.Filters,
 	}
 
-	result, err := h.osClient.HybridSearch(c.Request.Context(), tenantID, query)
+	result, err := h.osClient.HybridSearch(c.Request.Context(), tenantIDs, query)
 	if err != nil {
 		h.logger.Error("hybrid search failed",
-			zap.String("tenant_id", tenantID),
+			zap.Strings("tenant_ids", tenantIDs),
 			zap.Error(err))
 
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -524,6 +531,7 @@ func (h *SearchHandler) HybridSearch(c *gin.Context) {
 			ID:     hit.ID,
 			Score:  hit.Score,
 			Source: hit.Source,
+			Index:  hit.Index,
 		})
 	}
 

@@ -362,16 +362,26 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
+// indexNames 从租户 ID 列表生成索引名称列表
+func (c *Client) indexNames(tenantIDs []string) []string {
+	names := make([]string, len(tenantIDs))
+	for i, id := range tenantIDs {
+		names[i] = c.IndexName(id)
+	}
+	return names
+}
+
 // Search 执行搜索
-func (c *Client) Search(ctx context.Context, tenantID string, query *SearchQuery) (*SearchResult, error) {
-	indexName := c.IndexName(tenantID)
+func (c *Client) Search(ctx context.Context, tenantIDs []string, query *SearchQuery) (*SearchResult, error) {
+	indices := c.indexNames(tenantIDs)
 
 	// 构建搜索体
 	body := c.buildSearchBody(query)
 
 	req := &opensearchapi.SearchReq{
-		Indices: []string{indexName},
+		Indices: indices,
 		Body:    bytes.NewReader(mustMarshal(body)),
+		Params:  opensearchapi.SearchParams{SearchType: "dfs_query_then_fetch"},
 	}
 
 	res, err := c.client.Search(ctx, req)
@@ -387,6 +397,12 @@ func (c *Client) Search(ctx context.Context, tenantID string, query *SearchQuery
 		return nil, fmt.Errorf("search failed: %s", res.Inspect().Response.String())
 	}
 
+	// 构建 tenantID -> index 映射，用于从 _index 反查租户
+	indexToTenant := make(map[string]string)
+	for _, tid := range tenantIDs {
+		indexToTenant[c.IndexName(tid)] = tid
+	}
+
 	// 直接从响应结构体中解析数据
 	hitArray := res.Hits.Hits
 	var hits []SearchHit
@@ -398,10 +414,19 @@ func (c *Client) Search(ctx context.Context, tenantID string, query *SearchQuery
 			}
 		}
 
+		// 注入 _index 和 _tenant_id 到 source，方便下游使用
+		if source != nil {
+			source["_index"] = h.Index
+			if tid, ok := indexToTenant[h.Index]; ok {
+				source["_tenant_id"] = tid
+			}
+		}
+
 		hits = append(hits, SearchHit{
 			ID:     h.ID,
 			Score:  float64(h.Score),
 			Source: source,
+			Index:  h.Index,
 		})
 	}
 
@@ -509,24 +534,33 @@ func getString(m map[string]interface{}, key string) string {
 	return ""
 }
 
-// Aggregate 执行聚合查询
-func (c *Client) Aggregate(ctx context.Context, tenantID, fieldName string) (map[string]int64, error) {
-	indexName := c.IndexName(tenantID)
+// Aggregate 执行聚合查询，返回每租户维度的聚合结果
+func (c *Client) Aggregate(ctx context.Context, tenantIDs []string, fieldName string) (*AggregateResult, error) {
+	indices := c.indexNames(tenantIDs)
 
+	// 使用 terms 聚合 _index 作为顶层分桶，再嵌套字段聚合
 	body := map[string]interface{}{
 		"size": 0,
 		"aggs": map[string]interface{}{
-			fieldName: map[string]interface{}{
+			"by_index": map[string]interface{}{
 				"terms": map[string]interface{}{
-					"field": fieldName,
-					"size":  100,
+					"field": "_index",
+					"size":  len(indices),
+				},
+				"aggs": map[string]interface{}{
+					fieldName: map[string]interface{}{
+						"terms": map[string]interface{}{
+							"field": fieldName,
+							"size":  100,
+						},
+					},
 				},
 			},
 		},
 	}
 
 	req := &opensearchapi.SearchReq{
-		Indices: []string{indexName},
+		Indices: indices,
 		Body:    bytes.NewReader(mustMarshal(body)),
 	}
 
@@ -550,41 +584,78 @@ func (c *Client) Aggregate(ctx context.Context, tenantID, fieldName string) (map
 		return nil, fmt.Errorf("failed to parse aggregation: %w", err)
 	}
 
+	// 构建 index -> tenantID 映射
+	indexToTenant := make(map[string]string)
+	for _, tid := range tenantIDs {
+		indexToTenant[c.IndexName(tid)] = tid
+	}
+
+	mergedBuckets := make(map[string]int64)
+	byTenant := make(map[string]map[string]int64)
+
 	aggs, ok := result["aggregations"].(map[string]interface{})
 	if !ok {
-		return map[string]int64{}, nil
+		return &AggregateResult{Field: fieldName, Buckets: mergedBuckets, ByTenant: byTenant}, nil
 	}
 
-	fieldAgg, ok := aggs[fieldName].(map[string]interface{})
+	indexAgg, ok := aggs["by_index"].(map[string]interface{})
 	if !ok {
-		return map[string]int64{}, nil
+		return &AggregateResult{Field: fieldName, Buckets: mergedBuckets, ByTenant: byTenant}, nil
 	}
 
-	buckets, ok := fieldAgg["buckets"].([]interface{})
+	buckets, ok := indexAgg["buckets"].([]interface{})
 	if !ok {
-		return map[string]int64{}, nil
+		return &AggregateResult{Field: fieldName, Buckets: mergedBuckets, ByTenant: byTenant}, nil
 	}
 
-	resultMap := make(map[string]int64)
 	for _, b := range buckets {
 		bucket, _ := b.(map[string]interface{})
-		key := getString(bucket, "key")
-		docCount := int64(0)
-		if count, ok := bucket["doc_count"].(float64); ok {
-			docCount = int64(count)
+		indexName := getString(bucket, "key")
+		tenantID := indexToTenant[indexName]
+		if tenantID == "" {
+			tenantID = indexName // fallback: 使用索引名
 		}
-		resultMap[key] = docCount
+
+		// 提取嵌套的字段聚合
+		fieldAgg, ok := bucket[fieldName].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		fieldBuckets, ok := fieldAgg["buckets"].([]interface{})
+		if !ok {
+			continue
+		}
+
+		tenantBuckets := make(map[string]int64)
+		for _, fb := range fieldBuckets {
+			fbMap, _ := fb.(map[string]interface{})
+			key := getString(fbMap, "key")
+			docCount := int64(0)
+			if count, ok := fbMap["doc_count"].(float64); ok {
+				docCount = int64(count)
+			}
+			tenantBuckets[key] = docCount
+			mergedBuckets[key] += docCount
+		}
+
+		if len(tenantBuckets) > 0 {
+			byTenant[tenantID] = tenantBuckets
+		}
 	}
 
-	return resultMap, nil
+	return &AggregateResult{
+		Field:    fieldName,
+		Buckets:  mergedBuckets,
+		ByTenant: byTenant,
+	}, nil
 }
 
 // Count 统计文档数量
-func (c *Client) Count(ctx context.Context, tenantID string) (int64, error) {
-	indexName := c.IndexName(tenantID)
+func (c *Client) Count(ctx context.Context, tenantIDs []string) (int64, error) {
+	indices := c.indexNames(tenantIDs)
 
 	req := &opensearchapi.IndicesCountReq{
-		Indices: []string{indexName},
+		Indices: indices,
 	}
 
 	res, err := c.client.Indices.Count(ctx, req)
@@ -661,15 +732,16 @@ func mustMarshal(v interface{}) []byte {
 }
 
 // KNNSearch 执行 KNN 向量搜索
-func (c *Client) KNNSearch(ctx context.Context, tenantID string, query *KNNQuery) (*SearchResult, error) {
-	indexName := c.IndexName(tenantID)
+func (c *Client) KNNSearch(ctx context.Context, tenantIDs []string, query *KNNQuery) (*SearchResult, error) {
+	indices := c.indexNames(tenantIDs)
 
 	// 构建 KNN 搜索体
 	body := c.buildKNNSearchBody(query)
 
 	req := &opensearchapi.SearchReq{
-		Indices: []string{indexName},
+		Indices: indices,
 		Body:    bytes.NewReader(mustMarshal(body)),
+		Params:  opensearchapi.SearchParams{SearchType: "dfs_query_then_fetch"},
 	}
 
 	res, err := c.client.Search(ctx, req)
@@ -685,6 +757,12 @@ func (c *Client) KNNSearch(ctx context.Context, tenantID string, query *KNNQuery
 		return nil, fmt.Errorf("knn search failed: %s", respStr)
 	}
 
+	// 构建 tenantID -> index 映射
+	indexToTenant := make(map[string]string)
+	for _, tid := range tenantIDs {
+		indexToTenant[c.IndexName(tid)] = tid
+	}
+
 	// 解析搜索结果
 	hitArray := res.Hits.Hits
 	var hits []SearchHit
@@ -696,10 +774,18 @@ func (c *Client) KNNSearch(ctx context.Context, tenantID string, query *KNNQuery
 			}
 		}
 
+		if source != nil {
+			source["_index"] = h.Index
+			if tid, ok := indexToTenant[h.Index]; ok {
+				source["_tenant_id"] = tid
+			}
+		}
+
 		hits = append(hits, SearchHit{
 			ID:     h.ID,
 			Score:  float64(h.Score),
 			Source: source,
+			Index:  h.Index,
 		})
 	}
 
@@ -711,15 +797,16 @@ func (c *Client) KNNSearch(ctx context.Context, tenantID string, query *KNNQuery
 }
 
 // HybridSearch 执行混合搜索（文本 + 向量）
-func (c *Client) HybridSearch(ctx context.Context, tenantID string, query *HybridQuery) (*SearchResult, error) {
-	indexName := c.IndexName(tenantID)
+func (c *Client) HybridSearch(ctx context.Context, tenantIDs []string, query *HybridQuery) (*SearchResult, error) {
+	indices := c.indexNames(tenantIDs)
 
 	// 构建混合搜索体
 	body := c.buildHybridSearchBody(query)
 
 	req := &opensearchapi.SearchReq{
-		Indices: []string{indexName},
+		Indices: indices,
 		Body:    bytes.NewReader(mustMarshal(body)),
+		Params:  opensearchapi.SearchParams{SearchType: "dfs_query_then_fetch"},
 	}
 
 	res, err := c.client.Search(ctx, req)
@@ -735,6 +822,12 @@ func (c *Client) HybridSearch(ctx context.Context, tenantID string, query *Hybri
 		return nil, fmt.Errorf("hybrid search failed: %s", respStr)
 	}
 
+	// 构建 tenantID -> index 映射
+	indexToTenant := make(map[string]string)
+	for _, tid := range tenantIDs {
+		indexToTenant[c.IndexName(tid)] = tid
+	}
+
 	// 解析搜索结果
 	hitArray := res.Hits.Hits
 	var hits []SearchHit
@@ -746,10 +839,18 @@ func (c *Client) HybridSearch(ctx context.Context, tenantID string, query *Hybri
 			}
 		}
 
+		if source != nil {
+			source["_index"] = h.Index
+			if tid, ok := indexToTenant[h.Index]; ok {
+				source["_tenant_id"] = tid
+			}
+		}
+
 		hits = append(hits, SearchHit{
 			ID:     h.ID,
 			Score:  float64(h.Score),
 			Source: source,
+			Index:  h.Index,
 		})
 	}
 

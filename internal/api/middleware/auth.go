@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -14,10 +15,11 @@ import (
 )
 
 var (
-	ErrMissingToken  = errors.New("missing authorization token")
-	ErrInvalidToken  = errors.New("invalid authorization token")
-	ErrExpiredToken  = errors.New("token has expired")
-	ErrMissingTenant = errors.New("tenant ID not provided")
+	ErrMissingToken       = errors.New("missing authorization token")
+	ErrInvalidToken       = errors.New("invalid authorization token")
+	ErrExpiredToken       = errors.New("token has expired")
+	ErrMissingTenant      = errors.New("tenant ID not provided")
+	ErrTenantMismatch     = errors.New("first tenant ID must match authenticated tenant")
 )
 
 // AuthMiddleware JWT 认证中间件
@@ -176,9 +178,10 @@ func generateTokenID() string {
 
 // TenantMiddleware 租户中间件
 type TenantMiddleware struct {
-	logger       *zap.Logger
-	headerName   string
+	logger        *zap.Logger
+	headerName    string
 	requireTenant bool
+	maxTenants    int
 }
 
 // TenantMiddlewareConfig 租户中间件配置
@@ -186,6 +189,7 @@ type TenantMiddlewareConfig struct {
 	Logger        *zap.Logger
 	HeaderName    string // 租户 Header 名称，默认 "X-Tenant-ID"
 	RequireTenant bool   // 是否要求必须提供租户 ID
+	MaxTenants    int    // 最多允许的租户数量，0 表示不限制（建议设为 10）
 }
 
 // NewTenantMiddleware 创建租户中间件
@@ -195,30 +199,70 @@ func NewTenantMiddleware(cfg TenantMiddlewareConfig) *TenantMiddleware {
 		headerName = "X-Tenant-ID"
 	}
 
+	maxTenants := cfg.MaxTenants
+	if maxTenants <= 0 {
+		maxTenants = 10
+	}
+
 	return &TenantMiddleware{
 		logger:        cfg.Logger,
 		headerName:    headerName,
 		requireTenant: cfg.RequireTenant,
+		maxTenants:    maxTenants,
 	}
 }
 
 // Middleware Gin 中间件
 func (m *TenantMiddleware) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 优先从 JWT Claims 获取租户 ID
-		claimsVal, exists := c.Get("claims")
-		if exists {
+		// 1. 从 JWT Claims 获取本租户 ID
+		jwtTenantID := ""
+		if claimsVal, exists := c.Get("claims"); exists {
 			if claims, ok := claimsVal.(*tenant.Claims); ok && claims.TenantID != "" {
-				c.Set("tenant_id", claims.TenantID)
-				c.Set("tenant_source", "jwt")
-				c.Next()
-				return
+				jwtTenantID = claims.TenantID
 			}
 		}
 
-		// 从 Header 获取租户 ID
-		tenantID := c.GetHeader(m.headerName)
-		if tenantID == "" {
+		// 2. 从 Header 获取租户 ID（支持逗号分隔）
+		rawValue := c.GetHeader(m.headerName)
+		headerIDs := parseTenantIDs(rawValue)
+
+		// 3. 合并租户 ID 列表
+		var tenantIDs []string
+		source := "header"
+
+		if jwtTenantID != "" && len(headerIDs) > 0 {
+			// JWT 和 Header 同时存在：Header 必须以 JWT 租户开头
+			if headerIDs[0] != jwtTenantID {
+				m.logger.Debug("first tenant ID in header must match JWT tenant ID",
+					zap.String("jwt_tenant", jwtTenantID),
+					zap.String("header_first", headerIDs[0]))
+
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":   "first tenant ID in X-Tenant-ID must match your authenticated tenant",
+					"code":    http.StatusForbidden,
+					"success": false,
+				})
+				c.Abort()
+				return
+			}
+			tenantIDs = headerIDs
+			source = "jwt+header"
+		} else if jwtTenantID != "" {
+			// 仅有 JWT
+			tenantIDs = []string{jwtTenantID}
+			source = "jwt"
+		} else {
+			// 仅有 Header
+			tenantIDs = headerIDs
+			source = "header"
+		}
+
+		// 去重（保持顺序）
+		tenantIDs = deduplicateIDs(tenantIDs)
+
+		// 4. 校验租户 ID 是否存在
+		if len(tenantIDs) == 0 {
 			if m.requireTenant {
 				m.logger.Debug("tenant ID required but not provided",
 					zap.String("path", c.Request.URL.Path))
@@ -231,28 +275,81 @@ func (m *TenantMiddleware) Middleware() gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			// 不要求租户 ID 时继续
 			c.Next()
 			return
 		}
 
-		c.Set("tenant_id", tenantID)
-		c.Set("tenant_source", "header")
+		// 5. 检查租户数量上限
+		if m.maxTenants > 0 && len(tenantIDs) > m.maxTenants {
+			m.logger.Debug("too many tenant IDs",
+				zap.Int("count", len(tenantIDs)),
+				zap.Int("max", m.maxTenants))
 
-		m.logger.Debug("tenant resolved from header",
-			zap.String("tenant_id", tenantID))
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   fmt.Sprintf("too many tenant IDs: %d (max %d)", len(tenantIDs), m.maxTenants),
+				"code":    http.StatusBadRequest,
+				"success": false,
+			})
+			c.Abort()
+			return
+		}
+
+		c.Set("tenant_ids", tenantIDs)
+		c.Set("tenant_id", tenantIDs[0])
+		c.Set("tenant_source", source)
+
+		m.logger.Debug("tenant resolved",
+			zap.Strings("tenant_ids", tenantIDs),
+			zap.String("source", source))
 
 		c.Next()
 	}
 }
 
-// GetTenantID 从上下文获取租户 ID
+// deduplicateIDs 去重租户 ID 列表（保持顺序）
+func deduplicateIDs(ids []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			result = append(result, id)
+		}
+	}
+	return result
+}
+
+// GetTenantID 从上下文获取租户 ID（返回第一个，保持向后兼容）
 func GetTenantID(c *gin.Context) (string, bool) {
 	tenantID, exists := c.Get("tenant_id")
 	if !exists {
 		return "", false
 	}
 	return tenantID.(string), true
+}
+
+// GetTenantIDs 从上下文获取租户 ID 列表
+func GetTenantIDs(c *gin.Context) ([]string, bool) {
+	val, exists := c.Get("tenant_ids")
+	if !exists {
+		return nil, false
+	}
+	return val.([]string), true
+}
+
+// parseTenantIDs 解析逗号分隔的租户 ID 字符串
+func parseTenantIDs(rawValue string) []string {
+	parts := strings.Split(rawValue, ",")
+	seen := make(map[string]bool)
+	var ids []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" && !seen[p] {
+			seen[p] = true
+			ids = append(ids, p)
+		}
+	}
+	return ids
 }
 
 // GetClaims 从上下文获取 Claims

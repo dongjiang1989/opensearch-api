@@ -98,45 +98,44 @@ func (m *MockClient) DeleteDocument(ctx context.Context, tenantID, docID string)
 }
 
 // Search 搜索
-func (m *MockClient) Search(ctx context.Context, tenantID string, query *SearchQuery) (*SearchResult, error) {
+func (m *MockClient) Search(ctx context.Context, tenantIDs []string, query *SearchQuery) (*SearchResult, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	indexName := m.IndexName(tenantID)
-	docs, exists := m.documents[indexName]
-	if !exists {
-		return &SearchResult{
-			Total: 0,
-			Hits:  []SearchHit{},
-			Took:  0,
-		}, nil
-	}
-
+	// 收集所有索引中的文档
 	var hits []SearchHit
-	for docID, doc := range docs {
-		// 简单过滤
-		if query.Query != "" {
-			found := false
-			docMap, ok := doc.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			for _, value := range docMap {
-				if str, ok := value.(string); ok && contains(str, query.Query) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
+	for _, tenantID := range tenantIDs {
+		indexName := m.IndexName(tenantID)
+		docs, exists := m.documents[indexName]
+		if !exists {
+			continue
 		}
 
-		hits = append(hits, SearchHit{
-			ID:     docID,
-			Score:  1.0,
-			Source: doc.(map[string]interface{}),
-		})
+		for docID, doc := range docs {
+			// 简单过滤
+			if query.Query != "" {
+				found := false
+				docMap, ok := doc.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				for _, value := range docMap {
+					if str, ok := value.(string); ok && contains(str, query.Query) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+
+			hits = append(hits, SearchHit{
+				ID:     docID,
+				Score:  1.0,
+				Source: doc.(map[string]interface{}),
+			})
+		}
 	}
 
 	// 应用分页
@@ -163,17 +162,21 @@ func (m *MockClient) Search(ctx context.Context, tenantID string, query *SearchQ
 }
 
 // Count 统计文档数量
-func (m *MockClient) Count(ctx context.Context, tenantID string) (int64, error) {
+func (m *MockClient) Count(ctx context.Context, tenantIDs []string) (int64, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	indexName := m.IndexName(tenantID)
-	docs, exists := m.documents[indexName]
-	if !exists {
-		return 0, nil
+	var total int64
+	for _, tenantID := range tenantIDs {
+		indexName := m.IndexName(tenantID)
+		docs, exists := m.documents[indexName]
+		if !exists {
+			continue
+		}
+		total += int64(len(docs))
 	}
 
-	return int64(len(docs)), nil
+	return total, nil
 }
 
 // Refresh 刷新索引
@@ -210,26 +213,40 @@ func (m *MockClient) CreateIndexWithMapping(ctx context.Context, tenantID string
 	return m.CreateIndex(ctx, tenantID, FileMapping())
 }
 
-// Aggregate 聚合查询
-func (m *MockClient) Aggregate(ctx context.Context, tenantID, fieldName string) (map[string]int64, error) {
+// Aggregate 聚合查询，返回每租户维度的结果
+func (m *MockClient) Aggregate(ctx context.Context, tenantIDs []string, fieldName string) (*AggregateResult, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	indexName := m.IndexName(tenantID)
-	docs, exists := m.documents[indexName]
-	if !exists {
-		return map[string]int64{}, nil
-	}
+	mergedBuckets := make(map[string]int64)
+	byTenant := make(map[string]map[string]int64)
 
-	buckets := make(map[string]int64)
-	for _, doc := range docs {
-		docMap := doc.(map[string]interface{})
-		if value, ok := docMap[fieldName].(string); ok {
-			buckets[value]++
+	for _, tenantID := range tenantIDs {
+		indexName := m.IndexName(tenantID)
+		docs, exists := m.documents[indexName]
+		if !exists {
+			continue
+		}
+
+		tenantBuckets := make(map[string]int64)
+		for _, doc := range docs {
+			docMap := doc.(map[string]interface{})
+			if value, ok := docMap[fieldName].(string); ok {
+				tenantBuckets[value]++
+				mergedBuckets[value]++
+			}
+		}
+
+		if len(tenantBuckets) > 0 {
+			byTenant[tenantID] = tenantBuckets
 		}
 	}
 
-	return buckets, nil
+	return &AggregateResult{
+		Field:    fieldName,
+		Buckets:  mergedBuckets,
+		ByTenant: byTenant,
+	}, nil
 }
 
 // BulkIndex 批量索引
@@ -243,45 +260,43 @@ func (m *MockClient) BulkIndex(ctx context.Context, tenantID string, docs []Bulk
 }
 
 // KNNSearch KNN 向量搜索
-func (m *MockClient) KNNSearch(ctx context.Context, tenantID string, query *KNNQuery) (*SearchResult, error) {
+func (m *MockClient) KNNSearch(ctx context.Context, tenantIDs []string, query *KNNQuery) (*SearchResult, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	indexName := m.IndexName(tenantID)
-	docs, exists := m.documents[indexName]
-	if !exists {
-		return &SearchResult{
-			Total: 0,
-			Hits:  []SearchHit{},
-			Took:  0,
-		}, nil
-	}
-
 	var hits []SearchHit
-	for docID, doc := range docs {
-		docMap, ok := doc.(map[string]interface{})
-		if !ok {
+	for _, tenantID := range tenantIDs {
+		indexName := m.IndexName(tenantID)
+		docs, exists := m.documents[indexName]
+		if !exists {
 			continue
 		}
-		// 简单过滤
-		if len(query.Filters) > 0 {
-			match := true
-			for key, value := range query.Filters {
-				if docMap[key] != value {
-					match = false
-					break
-				}
-			}
-			if !match {
+
+		for docID, doc := range docs {
+			docMap, ok := doc.(map[string]interface{})
+			if !ok {
 				continue
 			}
-		}
+			// 简单过滤
+			if len(query.Filters) > 0 {
+				match := true
+				for key, value := range query.Filters {
+					if docMap[key] != value {
+						match = false
+						break
+					}
+				}
+				if !match {
+					continue
+				}
+			}
 
-		hits = append(hits, SearchHit{
-			ID:     docID,
-			Score:  0.95, // 模拟相似度分数
-			Source: docMap,
-		})
+			hits = append(hits, SearchHit{
+				ID:     docID,
+				Score:  0.95, // 模拟相似度分数
+				Source: docMap,
+			})
+		}
 	}
 
 	// 限制返回数量
@@ -301,59 +316,57 @@ func (m *MockClient) KNNSearch(ctx context.Context, tenantID string, query *KNNQ
 }
 
 // HybridSearch 混合搜索
-func (m *MockClient) HybridSearch(ctx context.Context, tenantID string, query *HybridQuery) (*SearchResult, error) {
+func (m *MockClient) HybridSearch(ctx context.Context, tenantIDs []string, query *HybridQuery) (*SearchResult, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	indexName := m.IndexName(tenantID)
-	docs, exists := m.documents[indexName]
-	if !exists {
-		return &SearchResult{
-			Total: 0,
-			Hits:  []SearchHit{},
-			Took:  0,
-		}, nil
-	}
-
 	var hits []SearchHit
-	for docID, doc := range docs {
-		docMap, ok := doc.(map[string]interface{})
-		if !ok {
+	for _, tenantID := range tenantIDs {
+		indexName := m.IndexName(tenantID)
+		docs, exists := m.documents[indexName]
+		if !exists {
 			continue
 		}
-		// 简单文本匹配
-		if query.Query != "" {
-			found := false
-			for _, value := range docMap {
-				if str, ok := value.(string); ok && contains(str, query.Query) {
-					found = true
-					break
-				}
-			}
-			if !found {
+
+		for docID, doc := range docs {
+			docMap, ok := doc.(map[string]interface{})
+			if !ok {
 				continue
 			}
-		}
-
-		// 过滤
-		if len(query.Filters) > 0 {
-			match := true
-			for key, value := range query.Filters {
-				if docMap[key] != value {
-					match = false
-					break
+			// 简单文本匹配
+			if query.Query != "" {
+				found := false
+				for _, value := range docMap {
+					if str, ok := value.(string); ok && contains(str, query.Query) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
 				}
 			}
-			if !match {
-				continue
-			}
-		}
 
-		hits = append(hits, SearchHit{
-			ID:     docID,
-			Score:  0.9,
-			Source: docMap,
-		})
+			// 过滤
+			if len(query.Filters) > 0 {
+				match := true
+				for key, value := range query.Filters {
+					if docMap[key] != value {
+						match = false
+						break
+					}
+				}
+				if !match {
+					continue
+				}
+			}
+
+			hits = append(hits, SearchHit{
+				ID:     docID,
+				Score:  0.9,
+				Source: docMap,
+			})
+		}
 	}
 
 	// 限制返回数量

@@ -294,8 +294,8 @@ func (h *FileHandler) DeleteFile(c *gin.Context) {
 // @Security X-Tenant-ID
 // @Router /files [get]
 func (h *FileHandler) ListFiles(c *gin.Context) {
-	tenantID, ok := middleware.GetTenantID(c)
-	if !ok || tenantID == "" {
+	tenantIDs, ok := middleware.GetTenantIDs(c)
+	if !ok || len(tenantIDs) == 0 {
 		c.JSON(http.StatusBadRequest, ErrorResponse{
 			Success: false,
 			Error:   "tenant ID is required",
@@ -325,7 +325,7 @@ func (h *FileHandler) ListFiles(c *gin.Context) {
 		},
 	}
 
-	result, err := h.indexer.SearchFiles(c.Request.Context(), tenantID, query)
+	result, err := h.indexer.SearchFiles(c.Request.Context(), tenantIDs, query)
 	if err != nil {
 		h.logger.Error("failed to list files", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{

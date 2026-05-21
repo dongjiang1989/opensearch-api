@@ -63,6 +63,32 @@ services:
       - opensearch-net
 
   # ============================================================
+  # Mock Embedding Service (for e2e testing)
+  # ============================================================
+  mock-embedding:
+    image: python:3.12-alpine
+    container_name: mock-embedding
+    command: >
+      sh -c "
+        apk add --no-cache python3 py3-pip &&
+        python3 -u /app/mock_embedding_server.py
+      "
+    ports:
+      - "11435:11435"
+    volumes:
+      - ../../scripts/mock_embedding_server.py:/app/mock_embedding_server.py:ro
+    networks:
+      - opensearch-net
+    restart: unless-stopped
+    profiles:
+      - e2e
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:11435/v1/embeddings')\" 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
   # 嵌入服务 (可选) - 通过 profile 按需启用
   # ============================================================
 
@@ -148,6 +174,14 @@ services:
 
       # Embedding disabled by default (set openai/local/clip + profile to enable)
       - OPENSEARCH_EMBEDDING_PROVIDER=none
+
+      # ---- E2E testing: mock embedding (docker compose --profile e2e up) ----
+      # When the mock-embedding service is running alongside:
+      - OPENSEARCH_EMBEDDING_PROVIDER=openai
+      - OPENSEARCH_EMBEDDING_APIURL=http://mock-embedding:11435/v1/embeddings
+      - OPENSEARCH_EMBEDDING_MODEL=mock-embedding
+      - OPENSEARCH_EMBEDDING_TIMEOUT=10
+      - OPENSEARCH_EMBEDDING_DIMENSIONS=1536
 
       # ---- 嵌入服务配置 (选一种，与 profile 配合) ----
 

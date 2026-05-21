@@ -17,8 +17,8 @@ import (
 
 // mockOpenSearchClient 模拟 OpenSearch 客户端
 type mockOpenSearchClient struct {
-	knnSearchFunc    func(tenantID string, query *opensearch.KNNQuery) (*opensearch.SearchResult, error)
-	hybridSearchFunc func(tenantID string, query *opensearch.HybridQuery) (*opensearch.SearchResult, error)
+	knnSearchFunc    func(tenantIDs []string, query *opensearch.KNNQuery) (*opensearch.SearchResult, error)
+	hybridSearchFunc func(tenantIDs []string, query *opensearch.HybridQuery) (*opensearch.SearchResult, error)
 }
 
 func (m *mockOpenSearchClient) IndexDocument(ctx context.Context, tenantID, docID string, doc map[string]interface{}) error {
@@ -33,13 +33,13 @@ func (m *mockOpenSearchClient) DeleteDocument(ctx context.Context, tenantID, doc
 	return nil
 }
 
-func (m *mockOpenSearchClient) Search(ctx context.Context, tenantID string, query *opensearch.SearchQuery) (*opensearch.SearchResult, error) {
+func (m *mockOpenSearchClient) Search(ctx context.Context, tenantIDs []string, query *opensearch.SearchQuery) (*opensearch.SearchResult, error) {
 	return nil, nil
 }
 
-func (m *mockOpenSearchClient) KNNSearch(ctx context.Context, tenantID string, query *opensearch.KNNQuery) (*opensearch.SearchResult, error) {
+func (m *mockOpenSearchClient) KNNSearch(ctx context.Context, tenantIDs []string, query *opensearch.KNNQuery) (*opensearch.SearchResult, error) {
 	if m.knnSearchFunc != nil {
-		return m.knnSearchFunc(tenantID, query)
+		return m.knnSearchFunc(tenantIDs, query)
 	}
 	return &opensearch.SearchResult{
 		Total: 1,
@@ -56,9 +56,9 @@ func (m *mockOpenSearchClient) KNNSearch(ctx context.Context, tenantID string, q
 	}, nil
 }
 
-func (m *mockOpenSearchClient) HybridSearch(ctx context.Context, tenantID string, query *opensearch.HybridQuery) (*opensearch.SearchResult, error) {
+func (m *mockOpenSearchClient) HybridSearch(ctx context.Context, tenantIDs []string, query *opensearch.HybridQuery) (*opensearch.SearchResult, error) {
 	if m.hybridSearchFunc != nil {
-		return m.hybridSearchFunc(tenantID, query)
+		return m.hybridSearchFunc(tenantIDs, query)
 	}
 	return &opensearch.SearchResult{
 		Total: 1,
@@ -87,12 +87,15 @@ func (m *mockOpenSearchClient) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockOpenSearchClient) Count(ctx context.Context, tenantID string) (int64, error) {
+func (m *mockOpenSearchClient) Count(ctx context.Context, tenantIDs []string) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockOpenSearchClient) Aggregate(ctx context.Context, tenantID, fieldName string) (map[string]int64, error) {
-	return nil, nil
+func (m *mockOpenSearchClient) Aggregate(ctx context.Context, tenantIDs []string, fieldName string) (*opensearch.AggregateResult, error) {
+	buckets := make(map[string]int64)
+	byTenant := make(map[string]map[string]int64)
+	// mock: return empty per-tenant buckets
+	return &opensearch.AggregateResult{Field: fieldName, Buckets: buckets, ByTenant: byTenant}, nil
 }
 
 func TestSearchHandler_KNNSearch_Success(t *testing.T) {
@@ -121,6 +124,7 @@ func TestSearchHandler_KNNSearch_Success(t *testing.T) {
 		Body: io.NopCloser(bytes.NewReader(bodyBytes)),
 	}
 	// 手动设置租户 ID 到上下文（模拟中间件行为）
+	c.Set("tenant_ids", []string{"tenant-1"})
 	c.Set("tenant_id", "tenant-1")
 
 	handler.KNNSearch(c)
@@ -207,7 +211,7 @@ func TestSearchHandler_KNNSearch_DefaultValues(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	var capturedQuery *opensearch.KNNQuery
 	client := &mockOpenSearchClient{
-		knnSearchFunc: func(tenantID string, query *opensearch.KNNQuery) (*opensearch.SearchResult, error) {
+		knnSearchFunc: func(tenantIDs []string, query *opensearch.KNNQuery) (*opensearch.SearchResult, error) {
 			capturedQuery = query
 			return &opensearch.SearchResult{
 				Total: 0,
@@ -237,6 +241,7 @@ func TestSearchHandler_KNNSearch_DefaultValues(t *testing.T) {
 		Body: io.NopCloser(bytes.NewReader(bodyBytes)),
 	}
 	// 手动设置租户 ID 到上下文（模拟中间件行为）
+	c.Set("tenant_ids", []string{"tenant-1"})
 	c.Set("tenant_id", "tenant-1")
 
 	handler.KNNSearch(c)
@@ -279,6 +284,7 @@ func TestSearchHandler_HybridSearch_Success(t *testing.T) {
 		Body: io.NopCloser(bytes.NewReader(bodyBytes)),
 	}
 	// 手动设置租户 ID 到上下文（模拟中间件行为）
+	c.Set("tenant_ids", []string{"tenant-1"})
 	c.Set("tenant_id", "tenant-1")
 
 	handler.HybridSearch(c)
@@ -334,7 +340,7 @@ func TestSearchHandler_HybridSearch_DefaultValues(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	var capturedQuery *opensearch.HybridQuery
 	client := &mockOpenSearchClient{
-		hybridSearchFunc: func(tenantID string, query *opensearch.HybridQuery) (*opensearch.SearchResult, error) {
+		hybridSearchFunc: func(tenantIDs []string, query *opensearch.HybridQuery) (*opensearch.SearchResult, error) {
 			capturedQuery = query
 			return &opensearch.SearchResult{
 				Total: 0,
@@ -365,6 +371,7 @@ func TestSearchHandler_HybridSearch_DefaultValues(t *testing.T) {
 		Body: io.NopCloser(bytes.NewReader(bodyBytes)),
 	}
 	// 手动设置租户 ID 到上下文（模拟中间件行为）
+	c.Set("tenant_ids", []string{"tenant-1"})
 	c.Set("tenant_id", "tenant-1")
 
 	handler.HybridSearch(c)
@@ -387,6 +394,7 @@ func TestVectorHit_Struct(t *testing.T) {
 		Source: map[string]interface{}{
 			"filename": "test.pdf",
 		},
+		Index: "tenant_tenant-a_files",
 	}
 
 	if hit.ID != "test-id" {
@@ -397,5 +405,8 @@ func TestVectorHit_Struct(t *testing.T) {
 	}
 	if hit.Source["filename"] != "test.pdf" {
 		t.Error("Source should contain filename")
+	}
+	if hit.Index != "tenant_tenant-a_files" {
+		t.Errorf("Index = %v, want tenant_tenant-a_files", hit.Index)
 	}
 }

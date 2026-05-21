@@ -69,6 +69,7 @@ func Setup(cfg Config) *gin.Engine {
 			Logger:        cfg.Logger,
 			HeaderName:    "X-Tenant-ID",
 			RequireTenant: true,
+			MaxTenants:    10, // 单次请求最多支持的租户数量
 		})
 
 		// 租户管理 API（可选：这些可能需要管理员权限）

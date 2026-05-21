@@ -135,6 +135,7 @@ func TestFileHandler_UploadFile_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -215,6 +216,7 @@ func TestFileHandler_UploadFile_MissingFile(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -247,6 +249,7 @@ func TestFileHandler_GetFile_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -299,6 +302,7 @@ func TestFileHandler_GetFile_NotFound(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -334,6 +338,7 @@ func TestFileHandler_GetFileMetadata_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -390,6 +395,7 @@ func TestFileHandler_DeleteFile_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -442,6 +448,7 @@ func TestFileHandler_DeleteFile_NotFound(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
@@ -470,6 +477,7 @@ func TestFileHandler_ListFiles_Success(t *testing.T) {
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set("tenant_ids", []string{"test-tenant"})
 		c.Set("tenant_id", "test-tenant")
 		c.Next()
 	})
