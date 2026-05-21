@@ -9,8 +9,10 @@ import (
 
 	"github.com/dongjiang1989/opensearch-api/internal/api/handler"
 	"github.com/dongjiang1989/opensearch-api/internal/api/middleware"
+	"github.com/dongjiang1989/opensearch-api/internal/embedding"
 	"github.com/dongjiang1989/opensearch-api/internal/indexer"
 	"github.com/dongjiang1989/opensearch-api/internal/opensearch"
+	"github.com/dongjiang1989/opensearch-api/internal/storage"
 	"github.com/dongjiang1989/opensearch-api/internal/tenant"
 )
 
@@ -19,6 +21,8 @@ type Config struct {
 	OpenSearch    *opensearch.Client
 	TenantService *tenant.Service
 	Indexer       *indexer.Indexer
+	Extractor     storage.ContentExtractor
+	Embedder      embedding.EmbeddingModel
 	Logger        *zap.Logger
 	Mode          string // debug, release, test
 }
@@ -111,6 +115,10 @@ func Setup(cfg Config) *gin.Engine {
 			// 向量搜索 API
 			search.POST("/knn", searchHandler.KNNSearch)
 			search.POST("/hybrid", searchHandler.HybridSearch)
+
+			// 向量检索 API（自动 embedding）
+			retrieveHandler := handler.NewRetrieveHandler(cfg.OpenSearch, cfg.Extractor, cfg.Embedder, cfg.Logger)
+			search.POST("/retrieve", retrieveHandler.Retrieve)
 		}
 	}
 

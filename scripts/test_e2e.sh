@@ -319,6 +319,40 @@ curl_json -X POST "$BASE_URL/search/knn" \
   -d @/tmp/knn_img_body.json
 [ "$CODE" = "200" ] && pass "Image KNN search succeeded (HTTP $CODE)" || fail "Image KNN failed (HTTP $CODE)"
 
+# ---- Step 8b: Retrieve (Auto Embedding) ----
+section "8b. Retrieve (Auto Embedding)"
+
+echo "Testing retrieve with JSON query (embedding may not be configured)..."
+curl_json -X POST "$BASE_URL/search/retrieve" \
+  -H "$AUTH_A" -H "$TENANT_A" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"machine learning","k":10}'
+if [ "$CODE" = "200" ]; then
+  pass "Retrieve (JSON) succeeded (HTTP $CODE)"
+  R_COUNT=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null || echo "0")
+  echo "  Results: $R_COUNT"
+elif [ "$CODE" = "503" ]; then
+  echo "  WARN: Embedding service not configured (HTTP $CODE) - expected in default config"
+  pass "Retrieve correctly reports embedding not configured (HTTP $CODE)"
+else
+  fail "Retrieve failed (HTTP $CODE): $BODY"
+fi
+
+echo "Testing retrieve with multipart file upload..."
+curl_json -X POST "$BASE_URL/search/retrieve" \
+  -H "$AUTH_A" -H "$TENANT_A" \
+  -F "file=@/tmp/test_document.txt" \
+  -F "query=supplemental search term" \
+  -F "k=10"
+if [ "$CODE" = "200" ]; then
+  pass "Retrieve (multipart) succeeded (HTTP $CODE)"
+elif [ "$CODE" = "503" ]; then
+  echo "  WARN: Embedding service not configured (HTTP $CODE) - expected in default config"
+  pass "Retrieve correctly reports embedding not configured (HTTP $CODE)"
+else
+  fail "Retrieve (multipart) failed (HTTP $CODE): $BODY"
+fi
+
 # ---- Step 9: Aggregate & Count ----
 section "9. Aggregate & Count"
 

@@ -93,6 +93,41 @@ curl -X POST http://localhost:18080/api/v1/search \
   }'
 ```
 
+### 向量检索（自动 Embedding）
+
+上传文件或传入文本，系统自动通过 Embedding 服务转换为向量后进行相似度检索：
+
+```bash
+# JSON 模式：传入文本 query
+curl -X POST http://localhost:18080/api/v1/search/retrieve \
+  -H "Authorization: Bearer <token>" \
+  -H "X-Tenant-ID: tenant-1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "machine learning algorithms",
+    "k": 10,
+    "field": "content_vector"
+  }'
+
+# Multipart 模式：上传文件
+curl -X POST http://localhost:18080/api/v1/search/retrieve \
+  -H "Authorization: Bearer <token>" \
+  -H "X-Tenant-ID: tenant-1" \
+  -F "file=@document.pdf" \
+  -F "query=补充关键词" \
+  -F "k=10"
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `query` | string | JSON 模式必填 | 文本查询关键词 |
+| `file` | file | Multipart 模式必填 | 上传文件，自动提取内容并转为向量 |
+| `k` | int | 否 | 返回结果数量，默认 10，最大 100 |
+| `field` | string | 否 | 向量字段名，默认 `content_vector` |
+| `filters` | object | 否 | 过滤条件 |
+
+> 注意：需要配置嵌入服务（`embedding.provider=openai/local/clip`），否则返回 503。
+
 ### KNN 向量搜索
 
 通过向量进行相似度搜索，适用于语义搜索、图片相似度检索等场景：
@@ -248,9 +283,42 @@ curl -X DELETE http://localhost:18080/api/v1/admin/tenants/tenant-1/hard
 | `jwt.expire_time` | Token 过期时间 | 24h |
 | `log.level` | 日志级别 | info |
 | `log.format` | 日志格式 | json (json/console) |
-| `embedding.provider` | 嵌入服务提供者 | openai (openai/local/clip) |
+| `embedding.provider` | 嵌入服务提供者 | openai (openai/local/clip/none) |
 | `embedding.model` | 嵌入模型 | text-embedding-3-small |
 | `embedding.dimensions` | 向量维度 | 1536 |
+| `embedding.api_url` | 嵌入服务 API 地址 | - |
+| `embedding.api_key` | 嵌入服务 API 密钥 | - |
+| `embedding.timeout` | 请求超时（秒） | 30 |
+
+### 启用向量检索
+
+向量检索（`/search/retrieve`）需要配置嵌入服务。支持的 provider：
+
+| Provider | 说明 | 适用场景 |
+|----------|------|----------|
+| `openai` | OpenAI 兼容 API | 使用 OpenAI 或兼容服务（如 Ollama v1 API） |
+| `local` | 本地 Ollama 服务 | 使用本地 Ollama 部署模型 |
+| `clip` | CLIP 多模态服务 | 图片+文本多模态嵌入 |
+| `none` | 不启用（默认） | 仅使用全文搜索，无需向量服务 |
+
+环境变量示例（使用 Ollama 本地部署）：
+
+```bash
+export OPENSEARCH_EMBEDDING_PROVIDER=openai
+export OPENSEARCH_EMBEDDING_APIURL=http://localhost:11434/v1/embeddings
+export OPENSEARCH_EMBEDDING_MODEL=nomic-embed-text
+export OPENSEARCH_EMBEDDING_TIMEOUT=60
+```
+
+Docker Compose 示例：
+
+```yaml
+environment:
+  - OPENSEARCH_EMBEDDING_PROVIDER=openai
+  - OPENSEARCH_EMBEDDING_APIURL=http://ollama:11434/v1/embeddings
+  - OPENSEARCH_EMBEDDING_MODEL=nomic-embed-text
+  - OPENSEARCH_EMBEDDING_TIMEOUT=60
+```
 
 ## Kubernetes 部署
 
@@ -282,9 +350,14 @@ make test-coverage
 
 # E2E 端到端测试（需要 Docker Compose 运行中）
 bash scripts/test_e2e.sh
+
+# Embedding E2E 测试（需要 mock embedding server，自动启动）
+bash scripts/test_e2e_embedding.sh
 ```
 
-E2E 测试覆盖：租户管理 → JWT 生成 → 文件上传 → 文件操作 → 文本搜索 → 租户隔离 → 向量搜索（KNN/混合） → 聚合统计 → 健康检查
+E2E 测试覆盖：租户管理 → JWT 生成 → 文件上传 → 文件操作 → 文本搜索 → 租户隔离 → 向量搜索（KNN/混合/自动Embedding检索） → 聚合统计 → 健康检查
+
+Embedding E2E 测试覆盖：启动 mock embedding server → 重启 app（启用 embedding） → 上传文件（自动生成向量） → retrieve JSON 模式 → retrieve multipart 模式 → 文件+query 混合模式
 
 ### 代码质量
 
@@ -455,6 +528,7 @@ make swag
 | `/api/v1/search/count` | GET | 是 | 统计文件数量 |
 | `/api/v1/search/knn` | POST | 是 | KNN 向量搜索 |
 | `/api/v1/search/hybrid` | POST | 是 | 混合搜索（文本 + 向量） |
+| `/api/v1/search/retrieve` | POST | 是 | 向量检索（自动 Embedding） |
 
 ## License
 

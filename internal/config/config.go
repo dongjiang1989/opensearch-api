@@ -166,6 +166,16 @@ func setDefaults() {
 	viper.SetDefault("log.format", "json")
 
 	// Embedding
+	_ = viper.BindEnv("embedding.provider", "OPENSEARCH_EMBEDDING_PROVIDER")
+	_ = viper.BindEnv("embedding.model", "OPENSEARCH_EMBEDDING_MODEL")
+	_ = viper.BindEnv("embedding.api_key", "OPENSEARCH_EMBEDDING_APIKEY")
+	_ = viper.BindEnv("embedding.api_key", "OPENSEARCH_EMBEDDING_API_KEY")
+	_ = viper.BindEnv("embedding.api_url", "OPENSEARCH_EMBEDDING_APIURL")
+	_ = viper.BindEnv("embedding.api_url", "OPENSEARCH_EMBEDDING_API_URL")
+	_ = viper.BindEnv("embedding.dimensions", "OPENSEARCH_EMBEDDING_DIMENSIONS")
+	_ = viper.BindEnv("embedding.batch_size", "OPENSEARCH_EMBEDDING_BATCHSIZE")
+	_ = viper.BindEnv("embedding.batch_size", "OPENSEARCH_EMBEDDING_BATCH_SIZE")
+	_ = viper.BindEnv("embedding.timeout", "OPENSEARCH_EMBEDDING_TIMEOUT")
 	viper.SetDefault("embedding.provider", "openai")
 	viper.SetDefault("embedding.model", "text-embedding-3-small")
 	viper.SetDefault("embedding.dimensions", 1536)

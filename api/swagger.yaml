@@ -152,6 +152,33 @@ definitions:
       total:
         type: integer
     type: object
+  internal_api_handler.RetrieveRequest:
+    properties:
+      field:
+        type: string
+      filters:
+        additionalProperties: true
+        type: object
+      k:
+        type: integer
+      query:
+        type: string
+    required:
+    - query
+    type: object
+  internal_api_handler.RetrieveResponse:
+    properties:
+      hits:
+        items:
+          $ref: '#/definitions/internal_api_handler.VectorHit'
+        type: array
+      success:
+        type: boolean
+      took_ms:
+        type: integer
+      total:
+        type: integer
+    type: object
   internal_api_handler.SearchHit:
     properties:
       highlight:
@@ -835,6 +862,40 @@ paths:
       summary: KNN 向量搜索
       tags:
       - Vector Search
+  /search/retrieve:
+    post:
+      consumes:
+      - application/json
+      - multipart/form-data
+      description: 接收文本 query 或文件，通过 Embedding 服务转换为向量，再从 OpenSearch 检索相关文档
+      parameters:
+      - description: 检索请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_handler.RetrieveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_handler.RetrieveResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      - X-Tenant-ID: []
+      summary: 向量混合检索
+      tags:
+      - Retrieve
   /token:
     post:
       consumes:

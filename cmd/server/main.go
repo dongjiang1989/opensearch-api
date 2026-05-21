@@ -198,6 +198,8 @@ func main() {
 		OpenSearch:    osClient,
 		TenantService: tenantService,
 		Indexer:       fileIndexer,
+		Extractor:     extractor,
+		Embedder:      textEmbedder,
 		Logger:        logger,
 		Mode:          cfg.Server.Mode,
 	})
