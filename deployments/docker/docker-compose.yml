@@ -179,6 +179,9 @@ services:
         condition: service_completed_successfully
     networks:
       - opensearch-net
+    # Allow containers to reach host services (e.g. mock embedding server on CI)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 networks:
