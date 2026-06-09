@@ -337,6 +337,10 @@ curl -X GET http://localhost:18080/api/v1/search/count \
 | `storage.local_path` | 本地存储路径 | ./data/files |
 | `storage.image_ocr` | 启用图片 OCR | false |
 | `storage.image_ocr_lang` | OCR 语言 | eng |
+| `storage.image_ocr_provider` | OCR 提供者 | tesseract (tesseract/qwen) |
+| `storage.image_ocr_api_url` | Qwen OCR API 地址 | - |
+| `storage.image_ocr_api_key` | Qwen OCR API 密钥 | - |
+| `storage.image_ocr_model` | Qwen OCR 模型名称 | qwen-vl-max |
 | `jwt.secret` | JWT 密钥 | change-this-secret-key |
 | `jwt.issuer` | JWT 签发者 | opensearch-file-api |
 | `jwt.expire_time` | Token 过期时间 | 24h |
@@ -505,6 +509,34 @@ export OPENSEARCH_STORAGE_IMAGE_OCR=true
 # 设置 OCR 语言
 export OPENSEARCH_STORAGE_IMAGE_OCR_LANG=chi_sim
 ```
+
+### Qwen VL 大模型 OCR
+
+除 Tesseract 外，还支持使用阿里云 Qwen VL 视觉大模型提取图片内容。相比传统 OCR，Qwen VL 能：
+
+- 识别复杂排版、手写体、艺术字
+- 理解图片语义（图表、截图、场景描述）
+- 多语言混合识别（中英文、日文等自动检测）
+
+```bash
+# 环境变量配置
+export OPENSEARCH_STORAGE_IMAGE_OCR=true
+export OPENSEARCH_STORAGE_IMAGE_OCR_PROVIDER=qwen
+export OPENSEARCH_STORAGE_IMAGE_OCR_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+export OPENSEARCH_STORAGE_IMAGE_OCR_API_KEY=sk-your-dashscope-api-key
+export OPENSEARCH_STORAGE_IMAGE_OCR_MODEL=qwen-vl-max
+```
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `image_ocr_provider` | OCR 提供者 | `tesseract` (tesseract/qwen) |
+| `image_ocr_api_url` | Qwen API 地址（OpenAI 兼容格式） | - |
+| `image_ocr_api_key` | DashScope API 密钥 | - |
+| `image_ocr_model` | 模型名称 | `qwen-vl-max` |
+
+支持的模型：
+- `qwen-vl-max` — 最强视觉理解，适合复杂图片
+- `qwen-vl-plus` — 平衡性能与成本
 
 ## OpenSearch 索引映射
 

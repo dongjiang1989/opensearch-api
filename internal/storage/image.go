@@ -3,11 +3,15 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"image"
 	"io"
+	"net/http"
 	"os/exec"
 	"strings"
+	"time"
 
 	// 图片格式支持
 	_ "image/gif"
@@ -18,14 +22,23 @@ import (
 
 // ImageExtractor 图片内容提取器
 type ImageExtractor struct {
-	enableOCR bool
-	ocrLang   string
+	enableOCR   bool
+	ocrProvider string // "tesseract" 或 "qwen"
+	ocrLang     string
+	ocrAPIURL   string
+	ocrAPIKey   string
+	ocrModel    string
+	httpClient  *http.Client
 }
 
 // ImageExtractorConfig 图片提取器配置
 type ImageExtractorConfig struct {
-	EnableOCR bool
-	OCRLang   string // OCR 语言，默认 "eng"
+	EnableOCR   bool
+	OCRProvider string // "tesseract"(默认) 或 "qwen"
+	OCRLang     string // tesseract OCR 语言，默认 "eng"
+	OCRAPIURL   string // Qwen OCR API 地址（OpenAI 兼容格式）
+	OCRAPIKey   string // Qwen OCR API 密钥
+	OCRModel    string // Qwen OCR 模型名称，默认 "qwen-vl-max"
 }
 
 // NewImageExtractor 创建图片提取器
@@ -34,9 +47,24 @@ func NewImageExtractor(cfg ImageExtractorConfig) *ImageExtractor {
 	if lang == "" {
 		lang = "eng"
 	}
+	provider := cfg.OCRProvider
+	if provider == "" {
+		provider = "tesseract"
+	}
+	model := cfg.OCRModel
+	if model == "" {
+		model = "qwen-vl-max"
+	}
 	return &ImageExtractor{
-		enableOCR: cfg.EnableOCR,
-		ocrLang:   lang,
+		enableOCR:   cfg.EnableOCR,
+		ocrProvider: provider,
+		ocrLang:     lang,
+		ocrAPIURL:   cfg.OCRAPIURL,
+		ocrAPIKey:   cfg.OCRAPIKey,
+		ocrModel:    model,
+		httpClient: &http.Client{
+			Timeout: 60 * time.Second,
+		},
 	}
 }
 
@@ -87,12 +115,18 @@ func (e *ImageExtractor) Extract(ctx context.Context, reader io.Reader, contentT
 
 	// OCR 功能（如果需要且支持）
 	if e.enableOCR && contentType != "image/svg+xml" {
-		// OCR 需要外部依赖，这里提供一个框架
-		// 实际使用中可集成 go-tesseract 或调用外部 OCR 服务
-		ocrText, err := e.performOCR(data, contentType)
+		var ocrText string
+		var err error
+		switch e.ocrProvider {
+		case "qwen":
+			ocrText, err = e.performQwenOCR(ctx, data, contentType)
+		default:
+			ocrText, err = e.performOCR(data, contentType)
+		}
 		if err == nil && ocrText != "" {
 			text = ocrText
 			metadata["ocr_enabled"] = true
+			metadata["ocr_provider"] = e.ocrProvider
 		}
 	}
 
@@ -122,6 +156,107 @@ func (e *ImageExtractor) performOCR(data []byte, contentType string) (string, er
 	}
 
 	return strings.TrimSpace(string(output)), nil
+}
+
+// performQwenOCR 使用 Qwen VL 大模型进行图片内容提取
+// 通过 OpenAI 兼容 API 格式调用，支持 qwen-vl-max / qwen-vl-plus 等模型
+func (e *ImageExtractor) performQwenOCR(ctx context.Context, data []byte, contentType string) (string, error) {
+	if e.ocrAPIURL == "" {
+		return "", fmt.Errorf("qwen OCR API URL is not configured")
+	}
+
+	// 将图片编码为 base64 data URL
+	b64 := base64.StdEncoding.EncodeToString(data)
+	dataURL := fmt.Sprintf("data:%s;base64,%s", contentType, b64)
+
+	// 构建 OpenAI 兼容格式的请求
+	type imageContent struct {
+		Type     string `json:"type"`
+		ImageURL struct {
+			URL string `json:"url"`
+		} `json:"image_url"`
+	}
+	type textContent struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	type message struct {
+		Role    string      `json:"role"`
+		Content interface{} `json:"content"`
+	}
+	type chatRequest struct {
+		Model    string    `json:"model"`
+		Messages []message `json:"messages"`
+	}
+
+	reqBody := chatRequest{
+		Model: e.ocrModel,
+		Messages: []message{
+			{
+				Role: "user",
+				Content: []interface{}{
+					imageContent{
+						Type: "image_url",
+						ImageURL: struct {
+							URL string `json:"url"`
+						}{URL: dataURL},
+					},
+					textContent{
+						Type: "text",
+						Text: "请提取这张图片中的所有文字内容。如果没有文字，请描述图片的主要内容。",
+					},
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal qwen OCR request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", e.ocrAPIURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("failed to create qwen OCR request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if e.ocrAPIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+e.ocrAPIKey)
+	}
+
+	resp, err := e.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("qwen OCR request failed: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("qwen OCR API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// 解析 OpenAI 兼容格式的响应
+	type chatResponse struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	var chatResp chatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return "", fmt.Errorf("failed to decode qwen OCR response: %w", err)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return "", fmt.Errorf("qwen OCR returned no choices")
+	}
+
+	return strings.TrimSpace(chatResp.Choices[0].Message.Content), nil
 }
 
 // GetImageMetadata 获取图片元数据（便捷函数）

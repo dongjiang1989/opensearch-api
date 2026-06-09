@@ -129,8 +129,12 @@ func main() {
 	extractor := storage.NewCompositeExtractor(
 		storage.NewPDFExtractor(),
 		storage.NewImageExtractor(storage.ImageExtractorConfig{
-			EnableOCR: cfg.Storage.ImageOCR,
-			OCRLang:   cfg.Storage.ImageOCRLang,
+			EnableOCR:   cfg.Storage.ImageOCR,
+			OCRProvider: cfg.Storage.ImageOCRProvider,
+			OCRLang:     cfg.Storage.ImageOCRLang,
+			OCRAPIURL:   cfg.Storage.ImageOCRAPIURL,
+			OCRAPIKey:   cfg.Storage.ImageOCRAPIKey,
+			OCRModel:    cfg.Storage.ImageOCRModel,
 		}),
 		storage.NewTextExtractor(storage.TextExtractorConfig{MaxSize: 10 * 1024 * 1024}),
 		storage.NewDocumentExtractor(),

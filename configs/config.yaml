@@ -25,6 +25,11 @@ storage:
   # OCR 配置
   image_ocr: true        # 是否启用图片 OCR（Docker 中默认启用）
   image_ocr_lang: "eng"  # OCR 语言：eng(英文), chi_sim(简体中文), jpn(日文) 等
+  image_ocr_provider: "tesseract"  # OCR 提供者: tesseract(本地CLI) 或 qwen(大模型API)
+  # Qwen VL 大模型 OCR 配置（当 image_ocr_provider=qwen 时生效）
+  # image_ocr_api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+  # image_ocr_api_key: "${DASHSCOPE_API_KEY}"  # DashScope API 密钥
+  # image_ocr_model: "qwen-vl-max"            # 模型: qwen-vl-max / qwen-vl-plus
 
 jwt:
   secret: "your-secret-key-change-in-production"

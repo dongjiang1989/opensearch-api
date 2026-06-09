@@ -62,6 +62,10 @@ type StorageConfig struct {
 	// OCR 配置
 	ImageOCR         bool   `mapstructure:"image_ocr"`          // 是否启用图片 OCR
 	ImageOCRLang     string `mapstructure:"image_ocr_lang"`     // OCR 语言，默认 eng
+	ImageOCRProvider string `mapstructure:"image_ocr_provider"` // OCR 提供者: tesseract(默认) 或 qwen
+	ImageOCRAPIURL   string `mapstructure:"image_ocr_api_url"`  // Qwen OCR API 地址
+	ImageOCRAPIKey   string `mapstructure:"image_ocr_api_key"`  // Qwen OCR API 密钥
+	ImageOCRModel    string `mapstructure:"image_ocr_model"`    // Qwen OCR 模型名称，默认 qwen-vl-max
 }
 
 // JWTConfig JWT 配置
@@ -141,6 +145,8 @@ func setDefaults() {
 	viper.SetDefault("storage.local_path", "./data/files")
 	viper.SetDefault("storage.image_ocr", false)
 	viper.SetDefault("storage.image_ocr_lang", "eng")
+	viper.SetDefault("storage.image_ocr_provider", "tesseract")
+	viper.SetDefault("storage.image_ocr_model", "qwen-vl-max")
 
 	// Storage - S3 (bind env explicitly for nested keys)
 	_ = viper.BindEnv("storage.use_path_style", "OPENSEARCH_STORAGE_USEPATHSTYLE")
@@ -155,6 +161,10 @@ func setDefaults() {
 	_ = viper.BindEnv("storage.s3_key_id", "OPENSEARCH_STORAGE_S3_KEY_ID")
 	_ = viper.BindEnv("storage.s3_secret", "OPENSEARCH_STORAGE_S3SECRET")
 	_ = viper.BindEnv("storage.s3_secret", "OPENSEARCH_STORAGE_S3_SECRET")
+	_ = viper.BindEnv("storage.image_ocr_provider", "OPENSEARCH_STORAGE_IMAGE_OCR_PROVIDER")
+	_ = viper.BindEnv("storage.image_ocr_api_url", "OPENSEARCH_STORAGE_IMAGE_OCR_API_URL")
+	_ = viper.BindEnv("storage.image_ocr_api_key", "OPENSEARCH_STORAGE_IMAGE_OCR_API_KEY")
+	_ = viper.BindEnv("storage.image_ocr_model", "OPENSEARCH_STORAGE_IMAGE_OCR_MODEL")
 
 	// JWT
 	viper.SetDefault("jwt.secret", "change-this-secret-key")
