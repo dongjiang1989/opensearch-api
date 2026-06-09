@@ -443,7 +443,7 @@ make docker-build
 | 类型 | 格式 | 内容提取 |
 |------|------|----------|
 | PDF | .pdf | 文本内容、元数据（作者、标题、页数） |
-| 图片 | .jpg, .png, .gif, .webp, .svg | 元数据（尺寸、格式）、可选 OCR |
+| 图片 | .jpg, .png, .gif, .webp, .tiff, .bmp, .svg | 元数据（尺寸、格式）、可选 OCR |
 | 文本 | .txt, .md, .json, .csv | 纯文本 |
 | HTML | .html, .htm | 提取纯文本 |
 | Office | .doc, .docx, .xls, .xlsx, .ppt, .pptx | 基础支持 |
@@ -452,6 +452,20 @@ make docker-build
 ## 图片 OCR 识别
 
 服务支持对上传的图片进行 OCR 识别，提取图片中的文字内容。
+
+### OCR 支持的图片格式
+
+| 格式 | Tesseract | Qwen VL |
+|------|:---------:|:-------:|
+| PNG  | ✓ | ✓ |
+| JPEG | ✓ | ✓ |
+| GIF  | ✓ | ✓ |
+| WebP | ✓ | ✓ |
+| TIFF | ✓ | ✗ |
+| BMP  | ✓ | ✗ |
+| SVG  | 独立 XML 文本提取 | 独立 XML 文本提取 |
+
+> **说明**: Qwen VL 不支持 TIFF/BMP 格式时会自动跳过并记录 `ocr_skipped`，不会报错。Tesseract 支持所有常见图片格式。
 
 ### Docker 中使用 OCR
 

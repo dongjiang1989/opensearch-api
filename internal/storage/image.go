@@ -79,7 +79,7 @@ func (e *ImageExtractor) getOCRLang() string {
 // CanHandle 判断是否是图片文件
 func (e *ImageExtractor) CanHandle(contentType string) bool {
 	switch contentType {
-	case "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml":
+	case "image/jpeg", "image/png", "image/gif", "image/webp", "image/tiff", "image/bmp", "image/svg+xml":
 		return true
 	}
 	return false
@@ -93,37 +93,46 @@ func (e *ImageExtractor) Extract(ctx context.Context, reader io.Reader, contentT
 		return nil, fmt.Errorf("failed to read image data: %w", err)
 	}
 
-	// 解码图片获取元数据
-	img, format, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return &ExtractedContent{
-			Text: "",
-			Metadata: map[string]interface{}{
-				"error": err.Error(),
-			},
-		}, nil
+	// 支持的 OCR 图片类型
+	ocrSupported := map[string]bool{
+		"image/jpeg": true,
+		"image/png":  true,
+		"image/gif":  true,
+		"image/webp": true,
+		"image/tiff": true,
+		"image/bmp":  true,
 	}
 
-	bounds := img.Bounds()
-	metadata := map[string]interface{}{
-		"format": format,
-		"width":  bounds.Dx(),
-		"height": bounds.Dy(),
+	// 解码图片获取元数据（非致命：Tesseract/Qwen 可处理 image.Decode 不支持的格式）
+	metadata := map[string]interface{}{}
+	img, format, err := image.Decode(bytes.NewReader(data))
+	if err == nil {
+		bounds := img.Bounds()
+		metadata["format"] = format
+		metadata["width"] = bounds.Dx()
+		metadata["height"] = bounds.Dy()
 	}
 
 	var text string
 
-	// OCR 功能（如果需要且支持）
-	if e.enableOCR && contentType != "image/svg+xml" {
+	// OCR：对支持的图片格式执行文字识别
+	if e.enableOCR && ocrSupported[contentType] {
 		var ocrText string
-		var err error
+		var ocrErr error
 		switch e.ocrProvider {
 		case "qwen":
-			ocrText, err = e.performQwenOCR(ctx, data, contentType)
+			if contentType == "image/tiff" || contentType == "image/bmp" {
+				// Qwen VL 不支持 TIFF/BMP，跳过
+				metadata["ocr_skipped"] = "format not supported by qwen"
+			} else {
+				ocrText, ocrErr = e.performQwenOCR(ctx, data, contentType)
+			}
 		default:
-			ocrText, err = e.performOCR(data, contentType)
+			ocrText, ocrErr = e.performOCR(data, contentType)
 		}
-		if err == nil && ocrText != "" {
+		if ocrErr != nil {
+			metadata["ocr_error"] = ocrErr.Error()
+		} else if ocrText != "" {
 			text = ocrText
 			metadata["ocr_enabled"] = true
 			metadata["ocr_provider"] = e.ocrProvider
