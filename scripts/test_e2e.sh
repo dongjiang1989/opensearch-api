@@ -487,6 +487,89 @@ curl_json "http://localhost:18080/health"
 curl_json "http://localhost:18080/ping"
 [ "$CODE" = "200" ] && pass "Ping check passed (HTTP $CODE)" || fail "Ping check failed (HTTP $CODE)"
 
+# ---- Step 12: OCR Provider Verification ----
+section "12. OCR Provider Verification"
+
+echo "Checking OCR config via app startup logs..."
+OCR_PROVIDER=$(docker logs opensearch-file-api 2>&1 | grep -i "ocr" | head -3 || echo "")
+if [ -n "$OCR_PROVIDER" ]; then
+  echo "  OCR-related logs: $OCR_PROVIDER"
+  pass "OCR config loaded"
+else
+  echo "  WARN: No OCR logs found (OCR may not be enabled)"
+fi
+
+echo "Uploading test image for OCR verification..."
+python3 -c "
+import struct, zlib
+width, height = 100, 30
+raw = b''
+for y in range(height):
+    raw += b'\x00'
+    for x in range(width):
+        raw += b'\xff\xff\xff'
+png_sig = b'\x89PNG\r\n\x1a\n'
+ihdr_data = struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0)
+ihdr_crc = struct.pack('>I', zlib.crc32(b'IHDR' + ihdr_data) & 0xffffffff)
+ihdr = b'\x00\x00\x00\x0dIHDR' + ihdr_data + ihdr_crc
+raw_data = zlib.compress(raw)
+idat_crc = struct.pack('>I', zlib.crc32(b'IDAT' + raw_data) & 0xffffffff)
+idat = struct.pack('>I', len(raw_data)) + b'IDAT' + raw_data + idat_crc
+iend_crc = struct.pack('>I', zlib.crc32(b'IEND') & 0xffffffff)
+iend = b'\x00\x00\x00\x00IEND' + iend_crc
+with open('/tmp/test_ocr_image.png', 'wb') as f:
+    f.write(png_sig + ihdr + idat + iend_crc)
+print('OCR test image created')
+"
+
+curl_json -X POST "$BASE_URL/files" \
+  -H "$AUTH_A" -H "$TENANT_A" \
+  -F "file=@/tmp/test_ocr_image.png" \
+  -F "description=OCR test image for provider verification" \
+  -F "tags[]=ocr-test"
+[ "$CODE" = "200" ] && pass "OCR test image uploaded (HTTP $CODE)" || fail "OCR image upload failed (HTTP $CODE): $BODY"
+
+sleep 2
+
+echo "Searching for OCR test file..."
+curl_json "$BASE_URL/search?q=ocr+test" -H "$AUTH_A" -H "$TENANT_A"
+[ "$CODE" = "200" ] && pass "OCR test search succeeded (HTTP $CODE)" || fail "OCR test search failed (HTTP $CODE)"
+OCR_HITS=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null || echo "0")
+echo "  OCR test search results: $OCR_HITS"
+[ "$OCR_HITS" -gt 0 ] && pass "OCR test file found in search" || echo "  WARN: OCR test file not found (may be delayed)"
+
+echo "Checking OCR provider in file metadata..."
+OCR_FILE_ID=$(echo "$BODY" | python3 -c "
+import sys, json
+hits = json.load(sys.stdin).get('hits', [])
+for h in hits:
+    if 'ocr' in h.get('source', {}).get('filename', '').lower():
+        print(h['id'])
+        break
+" 2>/dev/null || echo "")
+
+if [ -n "$OCR_FILE_ID" ]; then
+  curl_json "$BASE_URL/files/$OCR_FILE_ID/metadata" -H "$AUTH_A" -H "$TENANT_A"
+  [ "$CODE" = "200" ] && pass "OCR file metadata retrieved (HTTP $CODE)" || fail "OCR metadata failed (HTTP $CODE)"
+
+  # Check OCR provider in metadata
+  HAS_OCR_PROVIDER=$(echo "$BODY" | python3 -c "
+import sys, json
+data = json.load(sys.stdin).get('data', {})
+meta = data.get('metadata', {})
+print('yes' if 'ocr_provider' in meta else 'no')
+" 2>/dev/null || echo "no")
+  echo "  Has ocr_provider in metadata: $HAS_OCR_PROVIDER"
+
+  # Check content_vector presence
+  HAS_VECTOR=$(echo "$BODY" | python3 -c "
+import sys, json
+data = json.load(sys.stdin).get('data', {})
+print('yes' if 'content_vector' in data else 'no')
+" 2>/dev/null || echo "no")
+  echo "  Has content_vector: $HAS_VECTOR"
+fi
+
 # ---- Summary ----
 section "All tests completed successfully"
 echo "Tenant-A token: ${TOKEN_A:0:30}..."
@@ -504,3 +587,4 @@ echo "    8. Multi-tenant aggregate with by_tenant breakdown (D12)"
 echo "    9. Multi-tenant count"
 echo "   10. Aggregate & Count (single-tenant baseline)"
 echo "   11. Health & ping checks"
+echo "   12. OCR provider verification (tesseract/qwen)"

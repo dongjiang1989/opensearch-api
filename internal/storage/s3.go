@@ -107,6 +107,7 @@ func (s *S3Storage) Save(ctx context.Context, tenantID, fileID string, reader io
 		Filename:    fileID,
 		StoragePath: key,
 		TenantID:    tenantID,
+		FileSize:    int64(len(body)),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 		Metadata:    make(map[string]string),
