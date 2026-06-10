@@ -28,9 +28,12 @@ storage:
   # s3_secret: ""
   # use_path_style: true  # MinIO=true, 阿里云 OSS=false
 
-  # OCR 配置
-  image_ocr: false
-  image_ocr_lang: "eng"
+  # Qwen3.7-Plus 统一文档解析（必须配置）
+  # 支持: PDF(含扫描件)、图片(JPG/PNG/TIFF/BMP)、Office(docx/xlsx/pptx)、文本、EPUB
+  doc_parse_provider: "qwen"
+  doc_parse_api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+  doc_parse_api_key: "${DASHSCOPE_API_KEY}"
+  doc_parse_model: "qwen3.7-plus"
 
 jwt:
   secret: "change-this-secret-key"
