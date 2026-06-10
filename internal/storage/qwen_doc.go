@@ -230,17 +230,35 @@ func (e *QwenDocExtractor) uploadFile(ctx context.Context, data []byte, filename
 	}
 
 	var result struct {
-		ID string `json:"id"`
+		Data struct {
+			UploadedFiles []struct {
+				Name   string `json:"name"`
+				FileID string `json:"file_id"`
+			} `json:"uploaded_files"`
+			FailedUploads []interface{} `json:"failed_uploads"`
+		} `json:"data"`
+		ID        string `json:"id"`         // OpenAI-compatible fallback
+		RequestID string `json:"request_id"` // DashScope request_id
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return "", fmt.Errorf("failed to parse upload response: %w", err)
 	}
 
-	if result.ID == "" {
+	// DashScope native format: data.uploaded_files[0].file_id
+	var fileID string
+	if len(result.Data.UploadedFiles) > 0 {
+		fileID = result.Data.UploadedFiles[0].FileID
+	}
+	// OpenAI-compatible format fallback: {"id": "file-xxx"}
+	if fileID == "" {
+		fileID = result.ID
+	}
+
+	if fileID == "" {
 		return "", fmt.Errorf("DashScope file upload returned empty file id, response: %s", string(respBody))
 	}
 
-	return result.ID, nil
+	return fileID, nil
 }
 
 // deleteFile 删除 DashScope 上已上传的文件（best-effort cleanup）

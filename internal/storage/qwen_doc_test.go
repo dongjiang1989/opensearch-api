@@ -228,7 +228,7 @@ func TestQwenDocExtractor_Extract_DocumentWithMockServer(t *testing.T) {
 		if r.Method == "POST" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
-			fmt.Fprintf(w, `{"id":"file-test-123","object":"file","filename":"doc.pdf"}`)
+			fmt.Fprintf(w, `{"data":{"uploaded_files":[{"name":"doc.pdf","file_id":"file-test-123"}],"failed_uploads":[]},"request_id":"mock-req-001"}`)
 			return
 		}
 		w.WriteHeader(405)

@@ -213,12 +213,16 @@ class DocParseHandler(http.server.BaseHTTPRequestHandler):
         })
 
         resp = {
-            "id": file_id,
-            "object": "file",
-            "bytes": content_length,
-            "created_at": 1700000000,
-            "filename": filename,
-            "purpose": "file-extract",
+            "data": {
+                "uploaded_files": [
+                    {
+                        "name": filename,
+                        "file_id": file_id,
+                    }
+                ],
+                "failed_uploads": [],
+            },
+            "request_id": "mock-req-" + uuid.uuid4().hex[:12],
         }
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
