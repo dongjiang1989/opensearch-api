@@ -125,20 +125,18 @@ func main() {
 		logger.Info("using local storage", zap.String("path", cfg.Storage.LocalPath))
 	}
 
-	// 初始化内容提取器
-	extractor := storage.NewCompositeExtractor(
-		storage.NewPDFExtractor(),
-		storage.NewImageExtractor(storage.ImageExtractorConfig{
-			EnableOCR:   cfg.Storage.ImageOCR,
-			OCRProvider: cfg.Storage.ImageOCRProvider,
-			OCRLang:     cfg.Storage.ImageOCRLang,
-			OCRAPIURL:   cfg.Storage.ImageOCRAPIURL,
-			OCRAPIKey:   cfg.Storage.ImageOCRAPIKey,
-			OCRModel:    cfg.Storage.ImageOCRModel,
-		}),
-		storage.NewTextExtractor(storage.TextExtractorConfig{MaxSize: 10 * 1024 * 1024}),
-		storage.NewDocumentExtractor(),
-	)
+	// 初始化内容提取器 — doc_parse_provider 必须配置
+	if cfg.Storage.DocParseProvider != "qwen" {
+		logger.Fatal("doc_parse_provider must be set to 'qwen' in storage config")
+	}
+	extractor := storage.NewQwenDocExtractor(storage.QwenDocExtractorConfig{
+		APIURL: cfg.Storage.DocParseAPIURL,
+		APIKey: cfg.Storage.DocParseAPIKey,
+		Model:  cfg.Storage.DocParseModel,
+	})
+	logger.Info("using Qwen3.7-Plus document parser",
+		zap.String("model", cfg.Storage.DocParseModel),
+		zap.String("api_url", cfg.Storage.DocParseAPIURL))
 
 	// 初始化嵌入服务
 	var textEmbedder embedding.EmbeddingModel

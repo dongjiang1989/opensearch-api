@@ -335,12 +335,10 @@ curl -X GET http://localhost:18080/api/v1/search/count \
 | `opensearch.index_prefix` | 租户索引前缀 | tenant |
 | `storage.type` | 存储类型 | local (local/s3) |
 | `storage.local_path` | 本地存储路径 | ./data/files |
-| `storage.image_ocr` | 启用图片 OCR | false |
-| `storage.image_ocr_lang` | OCR 语言 | eng |
-| `storage.image_ocr_provider` | OCR 提供者 | tesseract (tesseract/qwen) |
-| `storage.image_ocr_api_url` | Qwen OCR API 地址 | - |
-| `storage.image_ocr_api_key` | Qwen OCR API 密钥 | - |
-| `storage.image_ocr_model` | Qwen OCR 模型名称 | qwen-vl-max |
+| `storage.doc_parse_provider` | 统一文档解析提供者（必须配置） | qwen |
+| `storage.doc_parse_api_url` | DashScope API 地址 | - |
+| `storage.doc_parse_api_key` | DashScope API 密钥 | - |
+| `storage.doc_parse_model` | 文档解析模型名称 | qwen3.7-plus |
 | `jwt.secret` | JWT 密钥 | change-this-secret-key |
 | `jwt.issuer` | JWT 签发者 | opensearch-file-api |
 | `jwt.expire_time` | Token 过期时间 | 24h |
@@ -442,115 +440,64 @@ make docker-build
 
 | 类型 | 格式 | 内容提取 |
 |------|------|----------|
-| PDF | .pdf | 文本内容、元数据（作者、标题、页数） |
-| 图片 | .jpg, .png, .gif, .webp, .tiff, .bmp, .svg | 元数据（尺寸、格式）、可选 OCR |
-| 文本 | .txt, .md, .json, .csv | 纯文本 |
-| HTML | .html, .htm | 提取纯文本 |
-| Office | .doc, .docx, .xls, .xlsx, .ppt, .pptx | 基础支持 |
-| RTF | .rtf | 文本内容 |
+| PDF | .pdf | 文本内容、扫描件 OCR、元数据（Qwen3.7-Plus） |
+| 图片 | .jpg, .png, .gif, .webp, .tiff, .bmp, .svg | 元数据（尺寸、格式）、OCR 文字提取（Qwen3.7-Plus） |
+| 文本 | .txt, .md, .json, .csv | 纯文本直接返回 |
+| HTML | .html, .htm | 提取纯文本（过滤 script/style） |
+| Office | .doc, .docx, .xls, .xlsx, .ppt, .pptx | 内容与表格提取（Qwen3.7-Plus） |
+| RTF | .rtf | 文本内容（Qwen3.7-Plus） |
+| 电子书 | .epub | 章节内容提取（Qwen3.7-Plus） |
 
-## 图片 OCR 识别
+## Qwen3.7-Plus 统一文档解析
 
-服务支持对上传的图片进行 OCR 识别，提取图片中的文字内容。
+Qwen3.7-Plus 是统一文档解析模型，支持全格式文件内容提取，内置 OCR + 表格/公式理解。**必须配置**。
 
-### OCR 支持的图片格式
+**支持的文档格式：**
 
-| 格式 | Tesseract | Qwen VL |
-|------|:---------:|:-------:|
-| PNG  | ✓ | ✓ |
-| JPEG | ✓ | ✓ |
-| GIF  | ✓ | ✓ |
-| WebP | ✓ | ✓ |
-| TIFF | ✓ | ✗ |
-| BMP  | ✓ | ✗ |
-| SVG  | 独立 XML 文本提取 | 独立 XML 文本提取 |
+| 类别 | 格式 | 说明 |
+|------|------|------|
+| PDF | 原生 PDF、扫描件 PDF | 含加密/高压缩/多页长文档 |
+| 图片 | JPG/PNG/TIFF/BMP/GIF/WebP | 截图、照片、手写件、模糊扫描件 |
+| Office | Word(.docx/.doc)、Excel(.xlsx/.xls)、PPT(.pptx/.ppt) | 直接解析内容与表格 |
+| 文本 | TXT、Markdown、HTML、CSV、JSON | 纯文本直接返回 |
+| 电子书 | EPUB | 章节内容提取 |
 
-> **说明**: Qwen VL 不支持 TIFF/BMP 格式时会自动跳过并记录 `ocr_skipped`，不会报错。Tesseract 支持所有常见图片格式。
+**配置方式：**
 
-### Docker 中使用 OCR
-
-Docker 镜像已预装 Tesseract OCR 及多语言包，无需额外配置即可使用。
-
-```bash
-# 构建 Docker 镜像（包含 OCR 支持）
-make docker-build
-
-# 或使用 docker-compose
-cd deployments/docker
-docker-compose up -d
+```yaml
+# config.yaml
+storage:
+  doc_parse_provider: "qwen"
+  doc_parse_api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+  doc_parse_api_key: "${DASHSCOPE_API_KEY}"
+  doc_parse_model: "qwen3.7-plus"
 ```
 
-### 本地开发启用 OCR
-
-1. **安装 Tesseract OCR**
-
-   ```bash
-   # macOS
-   brew install tesseract
-
-   # Ubuntu/Debian
-   apt-get install tesseract-ocr
-
-   # 安装语言包（可选）
-   brew install tesseract-lang  # macOS
-   apt-get install tesseract-ocr-eng tesseract-ocr-chi-sim  # Linux
-   ```
-
-2. **配置文件** (`configs/config.yaml`)
-
-   ```yaml
-   storage:
-     image_ocr: true        # 启用 OCR
-     image_ocr_lang: "eng"  # 语言：eng(英文), chi_sim(简体中文), jpn(日文)
-   ```
-
-### 支持的语言
-
-- `eng` - 英语（默认）
-- `chi_sim` - 简体中文
-- `chi_tra` - 繁体中文
-- `jpn` - 日语
-- `kor` - 韩语
-
-更多语言请参考 [Tesseract 文档](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html)
-
-### 环境变量
-
 ```bash
-# 启用 OCR
-export OPENSEARCH_STORAGE_IMAGE_OCR=true
-
-# 设置 OCR 语言
-export OPENSEARCH_STORAGE_IMAGE_OCR_LANG=chi_sim
-```
-
-### Qwen VL 大模型 OCR
-
-除 Tesseract 外，还支持使用阿里云 Qwen VL 视觉大模型提取图片内容。相比传统 OCR，Qwen VL 能：
-
-- 识别复杂排版、手写体、艺术字
-- 理解图片语义（图表、截图、场景描述）
-- 多语言混合识别（中英文、日文等自动检测）
-
-```bash
-# 环境变量配置
-export OPENSEARCH_STORAGE_IMAGE_OCR=true
-export OPENSEARCH_STORAGE_IMAGE_OCR_PROVIDER=qwen
-export OPENSEARCH_STORAGE_IMAGE_OCR_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
-export OPENSEARCH_STORAGE_IMAGE_OCR_API_KEY=sk-your-dashscope-api-key
-export OPENSEARCH_STORAGE_IMAGE_OCR_MODEL=qwen-vl-max
+# 环境变量
+export OPENSEARCH_STORAGE_DOC_PARSE_PROVIDER=qwen
+export OPENSEARCH_STORAGE_DOC_PARSE_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+export OPENSEARCH_STORAGE_DOC_PARSE_API_KEY=sk-your-dashscope-api-key
+export OPENSEARCH_STORAGE_DOC_PARSE_MODEL=qwen3.7-plus
 ```
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| `image_ocr_provider` | OCR 提供者 | `tesseract` (tesseract/qwen) |
-| `image_ocr_api_url` | Qwen API 地址（OpenAI 兼容格式） | - |
-| `image_ocr_api_key` | DashScope API 密钥 | - |
-| `image_ocr_model` | 模型名称 | `qwen-vl-max` |
+| `doc_parse_provider` | 文档解析提供者（**必须**配置为 `qwen`） | qwen |
+| `doc_parse_api_url` | DashScope API 地址 | - |
+| `doc_parse_api_key` | DashScope API 密钥 | - |
+| `doc_parse_model` | 模型名称 | `qwen3.7-plus` |
 
-支持的模型：
-- `qwen-vl-max` — 最强视觉理解，适合复杂图片
-- `qwen-vl-plus` — 平衡性能与成本
+**提取架构：**
+
+```
+QwenDocExtractor（doc_parse_provider=qwen，必须配置）
+├── 图片 → base64 data URL → image_url
+├── PDF/Office → base64 data URL → file
+└── 文本 → 直接读取
+```
+
+> **说明**: 所有文件类型统一使用 base64 编码直接发送，无需公网访问存储。
 
 ## OpenSearch 索引映射
 

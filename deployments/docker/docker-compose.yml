@@ -165,17 +165,13 @@ services:
       - OPENSEARCH_STORAGE_S3KEYID=minioadmin
       - OPENSEARCH_STORAGE_S3SECRET=minioadmin123
       - OPENSEARCH_STORAGE_USE_PATH_STYLE=true
-      - OPENSEARCH_STORAGE_IMAGE_OCR=true
-      - OPENSEARCH_STORAGE_IMAGE_OCR_LANG=eng
 
-      # OCR 提供者: tesseract(默认，本地CLI) 或 qwen(大模型API)
-      - OPENSEARCH_STORAGE_IMAGE_OCR_PROVIDER=tesseract
+      # Qwen3.7-Plus 统一文档解析（必须配置）
+      - OPENSEARCH_STORAGE_DOC_PARSE_PROVIDER=qwen
+      - OPENSEARCH_STORAGE_DOC_PARSE_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+      - OPENSEARCH_STORAGE_DOC_PARSE_API_KEY=${DASHSCOPE_API_KEY:-sk-xxx}
+      - OPENSEARCH_STORAGE_DOC_PARSE_MODEL=qwen3.7-plus
 
-      # ---- Qwen VL 大模型 OCR (取消注释启用) ----
-      # - OPENSEARCH_STORAGE_IMAGE_OCR_PROVIDER=qwen
-      # - OPENSEARCH_STORAGE_IMAGE_OCR_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
-      # - OPENSEARCH_STORAGE_IMAGE_OCR_API_KEY=sk-xxx
-      # - OPENSEARCH_STORAGE_IMAGE_OCR_MODEL=qwen-vl-max
       - OPENSEARCH_JWT_SECRET=dev-secret-key-change-in-production
       - OPENSEARCH_SERVER_MODE=debug
       - OPENSEARCH_LOG_LEVEL=debug

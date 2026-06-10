@@ -59,13 +59,11 @@ type StorageConfig struct {
 	S3KeyID    string `mapstructure:"s3_key_id"`
 	S3Secret   string `mapstructure:"s3_secret"`
 	UsePathStyle     bool `mapstructure:"use_path_style"`     // MinIO=true, 阿里云 OSS=false
-	// OCR 配置
-	ImageOCR         bool   `mapstructure:"image_ocr"`          // 是否启用图片 OCR
-	ImageOCRLang     string `mapstructure:"image_ocr_lang"`     // OCR 语言，默认 eng
-	ImageOCRProvider string `mapstructure:"image_ocr_provider"` // OCR 提供者: tesseract(默认) 或 qwen
-	ImageOCRAPIURL   string `mapstructure:"image_ocr_api_url"`  // Qwen OCR API 地址
-	ImageOCRAPIKey   string `mapstructure:"image_ocr_api_key"`  // Qwen OCR API 密钥
-	ImageOCRModel    string `mapstructure:"image_ocr_model"`    // Qwen OCR 模型名称，默认 qwen-vl-max
+	// Qwen3.7-Plus 统一文档解析配置（必须配置）
+	DocParseProvider string `mapstructure:"doc_parse_provider"` // 必须设为 "qwen"
+	DocParseAPIURL   string `mapstructure:"doc_parse_api_url"`  // DashScope chat completions 地址
+	DocParseAPIKey   string `mapstructure:"doc_parse_api_key"`  // DashScope API 密钥
+	DocParseModel    string `mapstructure:"doc_parse_model"`    // 模型名称，默认 qwen3.7-plus
 }
 
 // JWTConfig JWT 配置
@@ -143,10 +141,7 @@ func setDefaults() {
 	// Storage
 	viper.SetDefault("storage.type", "local")
 	viper.SetDefault("storage.local_path", "./data/files")
-	viper.SetDefault("storage.image_ocr", false)
-	viper.SetDefault("storage.image_ocr_lang", "eng")
-	viper.SetDefault("storage.image_ocr_provider", "tesseract")
-	viper.SetDefault("storage.image_ocr_model", "qwen-vl-max")
+	viper.SetDefault("storage.doc_parse_model", "qwen3.7-plus")
 
 	// Storage - S3 (bind env explicitly for nested keys)
 	_ = viper.BindEnv("storage.use_path_style", "OPENSEARCH_STORAGE_USEPATHSTYLE")
@@ -161,10 +156,10 @@ func setDefaults() {
 	_ = viper.BindEnv("storage.s3_key_id", "OPENSEARCH_STORAGE_S3_KEY_ID")
 	_ = viper.BindEnv("storage.s3_secret", "OPENSEARCH_STORAGE_S3SECRET")
 	_ = viper.BindEnv("storage.s3_secret", "OPENSEARCH_STORAGE_S3_SECRET")
-	_ = viper.BindEnv("storage.image_ocr_provider", "OPENSEARCH_STORAGE_IMAGE_OCR_PROVIDER")
-	_ = viper.BindEnv("storage.image_ocr_api_url", "OPENSEARCH_STORAGE_IMAGE_OCR_API_URL")
-	_ = viper.BindEnv("storage.image_ocr_api_key", "OPENSEARCH_STORAGE_IMAGE_OCR_API_KEY")
-	_ = viper.BindEnv("storage.image_ocr_model", "OPENSEARCH_STORAGE_IMAGE_OCR_MODEL")
+	_ = viper.BindEnv("storage.doc_parse_provider", "OPENSEARCH_STORAGE_DOC_PARSE_PROVIDER")
+	_ = viper.BindEnv("storage.doc_parse_api_url", "OPENSEARCH_STORAGE_DOC_PARSE_API_URL")
+	_ = viper.BindEnv("storage.doc_parse_api_key", "OPENSEARCH_STORAGE_DOC_PARSE_API_KEY")
+	_ = viper.BindEnv("storage.doc_parse_model", "OPENSEARCH_STORAGE_DOC_PARSE_MODEL")
 
 	// JWT
 	viper.SetDefault("jwt.secret", "change-this-secret-key")
