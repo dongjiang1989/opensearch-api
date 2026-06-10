@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/dongjiang1989/opensearch-api/internal/metrics"
 )
 
 // LocalEmbedding 本地嵌入服务（兼容 ollama 等本地模型服务）
@@ -55,6 +57,11 @@ func NewLocalEmbedding(cfg LocalEmbeddingConfig) *LocalEmbedding {
 		model:  cfg.Model,
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
+			Transport: &metrics.InstrumentedTransport{
+				Target:    "embedding_local",
+				Operation: "generate",
+				Inner:     http.DefaultTransport,
+			},
 		},
 	}
 }

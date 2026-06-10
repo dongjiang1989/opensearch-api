@@ -448,15 +448,35 @@ curl_json "http://localhost:$MOCK_PORT/requests"
 [ "$CODE" = "200" ] && pass "Mock server request log retrieved (HTTP $CODE)" || fail "Mock server log failed"
 
 MOCK_CALLS=$(echo "$BODY" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
-echo "  Mock API calls received: $MOCK_CALLS"
-[ "$MOCK_CALLS" -ge 4 ] && pass "Mock API called for all document types (PDF/DOCX/XLSX/PNG)" || fail "Expected >=4 mock API calls, got $MOCK_CALLS"
+echo "  Total mock API calls: $MOCK_CALLS"
 
-echo "  Request details:"
+# Verify file uploads (3 document types: PDF/DOCX/XLSX; PNG uses image_url, no upload)
+UPLOAD_COUNT=$(echo "$BODY" | python3 -c "
+import sys, json
+reqs = json.load(sys.stdin)
+print(sum(1 for r in reqs if r.get('action') == 'file_upload'))
+" 2>/dev/null || echo "0")
+echo "  File uploads: $UPLOAD_COUNT"
+[ "$UPLOAD_COUNT" -ge 3 ] && pass "Files uploaded to DashScope (PDF/DOCX/XLSX)" || fail "Expected >=3 file uploads, got $UPLOAD_COUNT"
+
+# Verify chat completions (4 types: PDF/DOCX/XLSX via file_id + PNG via image_url)
+CHAT_COUNT=$(echo "$BODY" | python3 -c "
+import sys, json
+reqs = json.load(sys.stdin)
+print(sum(1 for r in reqs if r.get('model') and r.get('action') != 'file_upload'))
+" 2>/dev/null || echo "0")
+echo "  Chat completions: $CHAT_COUNT"
+[ "$CHAT_COUNT" -ge 4 ] && pass "Chat completions called for all document types" || fail "Expected >=4 chat completions, got $CHAT_COUNT"
+
+echo "  Upload details:"
 echo "$BODY" | python3 -c "
 import sys, json
 reqs = json.load(sys.stdin)
 for r in reqs:
-    print('    - type: %s, model: %s' % (r.get('detected_type','unknown'), r.get('model','unknown')))
+    if r.get('action') == 'file_upload':
+        print('    - uploaded: %s (%s)' % (r.get('filename','?'), r.get('content_type','?')))
+    elif r.get('detected_type'):
+        print('    - chat: type=%s, model=%s' % (r.get('detected_type','?'), r.get('model','?')))
 " 2>/dev/null
 
 # ---- Step 9: Aggregate by file type ----

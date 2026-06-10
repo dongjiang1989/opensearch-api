@@ -9,6 +9,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	"github.com/dongjiang1989/opensearch-api/internal/metrics"
 )
 
 // CLIPEmbedding CLIP 多模态嵌入服务（支持图片和文本）
@@ -58,6 +60,11 @@ func NewCLIPEmbedding(cfg CLIPEmbeddingConfig) *CLIPEmbedding {
 		dimensions: cfg.Dimensions,
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
+			Transport: &metrics.InstrumentedTransport{
+				Target:    "embedding_clip",
+				Operation: "generate",
+				Inner:     http.DefaultTransport,
+			},
 		},
 	}
 }

@@ -2,6 +2,10 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -182,4 +186,128 @@ func TestIsTextContent(t *testing.T) {
 	assert.True(t, isTextContent("application/json"))
 	assert.False(t, isTextContent("image/png"))
 	assert.False(t, isTextContent("application/pdf"))
+}
+
+func TestQwenDocExtractor_baseURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		apiURL   string
+		expected string
+	}{
+		{
+			name:     "dashscope compatible mode",
+			apiURL:   "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+			expected: "https://dashscope.aliyuncs.com",
+		},
+		{
+			name:     "custom endpoint with /v1",
+			apiURL:   "http://localhost:8080/v1/chat/completions",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:     "bare host",
+			apiURL:   "https://api.example.com",
+			expected: "https://api.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := NewQwenDocExtractor(QwenDocExtractorConfig{APIURL: tt.apiURL})
+			assert.Equal(t, tt.expected, e.baseURL())
+		})
+	}
+}
+
+func TestQwenDocExtractor_Extract_DocumentWithMockServer(t *testing.T) {
+	// Start a mock HTTP server that handles file upload and chat completions
+	mux := http.NewServeMux()
+
+	// File upload endpoint
+	mux.HandleFunc("/api/v1/files", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(200)
+			fmt.Fprintf(w, `{"id":"file-test-123","object":"file","filename":"doc.pdf"}`)
+			return
+		}
+		w.WriteHeader(405)
+	})
+
+	// File delete endpoint
+	mux.HandleFunc("/api/v1/files/file-test-123", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(200)
+			fmt.Fprintf(w, `{"id":"file-test-123","deleted":true}`)
+			return
+		}
+		w.WriteHeader(405)
+	})
+
+	// Chat completions endpoint
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&req)
+
+		// Verify the message contains file_id reference
+		messages := req["messages"].([]interface{})
+		msg := messages[0].(map[string]interface{})
+		content := msg["content"].([]interface{})
+
+		hasFile := false
+		for _, item := range content {
+			m := item.(map[string]interface{})
+			if m["type"] == "file" {
+				hasFile = true
+				assert.Equal(t, "file-test-123", m["file"])
+			}
+		}
+		assert.True(t, hasFile, "chat request should contain file reference")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"choices":[{"message":{"content":"Extracted PDF content from mock"}}]}`)
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	e := NewQwenDocExtractor(QwenDocExtractorConfig{
+		APIURL: server.URL + "/v1/chat/completions",
+		APIKey: "test-key",
+	})
+
+	ctx := context.Background()
+	reader := strings.NewReader("fake pdf data")
+	result, err := e.Extract(ctx, reader, "application/pdf")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "Extracted PDF content from mock", result.Text)
+	assert.Equal(t, "qwen", result.Metadata["doc_parse_provider"])
+}
+
+func TestQwenDocExtractor_Extract_DocumentUploadFailure(t *testing.T) {
+	// Mock server that rejects file uploads
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/files", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		fmt.Fprintf(w, `{"error":"upload failed"}`)
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	e := NewQwenDocExtractor(QwenDocExtractorConfig{
+		APIURL: server.URL + "/v1/chat/completions",
+		APIKey: "test-key",
+	})
+
+	ctx := context.Background()
+	reader := strings.NewReader("fake pdf data")
+	result, err := e.Extract(ctx, reader, "application/pdf")
+
+	// Upload failure is captured in metadata, not returned as error
+	assert.NoError(t, err)
+	assert.Equal(t, "", result.Text)
+	assert.Contains(t, result.Metadata["doc_parse_error"], "upload")
 }

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/dongjiang1989/opensearch-api/internal/metrics"
 )
 
 // OpenAIEmbedding OpenAI 嵌入服务
@@ -73,6 +75,11 @@ func NewOpenAIEmbedding(cfg OpenAIEmbeddingConfig) *OpenAIEmbedding {
 		dimensions: cfg.Dimensions,
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
+			Transport: &metrics.InstrumentedTransport{
+				Target:    "embedding_openai",
+				Operation: "generate",
+				Inner:     http.DefaultTransport,
+			},
 		},
 	}
 }

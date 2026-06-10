@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/dongjiang1989/opensearch-api/internal/config"
+	"github.com/dongjiang1989/opensearch-api/internal/metrics"
 )
 
 // Client OpenSearch 客户端封装
@@ -36,8 +37,11 @@ func NewClient(cfg *config.OpenSearchConfig, logger *zap.Logger) (*Client, error
 			Addresses: []string{cfg.URL()},
 			Username:  cfg.Username,
 			Password:  cfg.Password,
-			Transport: &http.Transport{
-				TLSClientConfig: tlsConfig,
+			Transport: &metrics.InstrumentedTransport{
+				Target: "opensearch",
+				Inner: &http.Transport{
+					TLSClientConfig: tlsConfig,
+				},
 			},
 		},
 	})

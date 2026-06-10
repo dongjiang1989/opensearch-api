@@ -2,14 +2,22 @@
 """Mock DashScope chat completions server (OpenAI-compatible).
 
 Simulates the Qwen3.7-Plus document parsing API for E2E testing.
-Returns deterministic extracted text based on content type detected
-from the base64 data URL in the request.
+Supports:
+- POST /api/v1/files — file upload (returns mock file_id)
+- DELETE /api/v1/files/<id> — file deletion
+- POST /v1/chat/completions — chat completions with file/image references
+Returns deterministic extracted text based on content type.
 """
 import http.server
 import json
 import base64
+import uuid
+import re
 
 PORT = 11436
+
+# In-memory file store: file_id → content_type
+uploaded_files = {}
 
 # Map content type patterns to mock extracted text
 MOCK_RESPONSES = {
@@ -47,31 +55,30 @@ def detect_content_type(content_items):
                         return ct
                 return "image/png"  # default image type
 
-            # Check file type
+            # Check file type — file is now a string (file_id)
             if item.get("type") == "file":
-                url = item.get("file", {}).get("url", "")
-                for ct in MOCK_RESPONSES:
-                    if ct in url:
-                        return ct
-                # Try to detect from data URL
-                if "application/pdf" in url:
-                    return "application/pdf"
-                if "wordprocessingml" in url or "msword" in url:
-                    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                if "spreadsheetml" in url or "ms-excel" in url:
-                    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                if "presentationml" in url or "ms-powerpoint" in url:
-                    return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                if "epub" in url:
-                    return "application/epub+zip"
-                if "rtf" in url:
-                    return "application/rtf"
+                file_ref = item.get("file", "")
+                if isinstance(file_ref, str):
+                    # Look up content type from uploaded files store
+                    if file_ref in uploaded_files:
+                        return uploaded_files[file_ref]
+                elif isinstance(file_ref, dict):
+                    # Legacy format: {"url": "data:..."}
+                    url = file_ref.get("url", "")
+                    for ct in MOCK_RESPONSES:
+                        if ct in url:
+                            return ct
 
     return None
 
 
 class DocParseHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
+        # File upload endpoint
+        if self.path == "/api/v1/files":
+            self._handle_file_upload()
+            return
+
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
@@ -130,6 +137,89 @@ class DocParseHandler(http.server.BaseHTTPRequestHandler):
             },
         }
 
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(resp).encode())
+
+    def do_DELETE(self):
+        """Handle file deletion: DELETE /api/v1/files/<file_id>"""
+        if self.path.startswith("/api/v1/files/"):
+            file_id = self.path.split("/")[-1]
+            removed = uploaded_files.pop(file_id, None)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"id": file_id, "deleted": removed is not None}).encode())
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def _handle_file_upload(self):
+        """Handle multipart file upload: POST /api/v1/files"""
+        content_type = self.headers.get("Content-Type", "")
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+
+        # Extract boundary from Content-Type
+        filename = ""
+        if "multipart/form-data" in content_type:
+            for part in content_type.split(";"):
+                part = part.strip()
+                if part.startswith("boundary="):
+                    boundary = part.split("=", 1)[1].strip().encode()
+                    break
+            else:
+                boundary = b"----WebKitFormBoundary"
+
+            # Extract filename from Content-Disposition header in body
+            body_str = body.decode("utf-8", errors="replace")
+            for line in body_str.split("\r\n"):
+                if "filename=" in line:
+                    m = re.search(r'filename="([^"]*)"', line)
+                    if m:
+                        filename = m.group(1)
+                        break
+
+        # Generate mock file ID and store content type
+        file_id = "file-mock-" + uuid.uuid4().hex[:12]
+
+        # Guess content type from filename extension
+        ct = "application/octet-stream"
+        ext_map = {
+            ".pdf": "application/pdf",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".doc": "application/msword",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".xls": "application/vnd.ms-excel",
+            ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ".ppt": "application/vnd.ms-powerpoint",
+            ".rtf": "application/rtf",
+            ".epub": "application/epub+zip",
+        }
+        for ext, mime in ext_map.items():
+            if filename.lower().endswith(ext):
+                ct = mime
+                break
+
+        uploaded_files[file_id] = ct
+
+        request_log.append({
+            "path": self.path,
+            "action": "file_upload",
+            "file_id": file_id,
+            "filename": filename,
+            "content_type": ct,
+        })
+
+        resp = {
+            "id": file_id,
+            "object": "file",
+            "bytes": content_length,
+            "created_at": 1700000000,
+            "filename": filename,
+            "purpose": "file-extract",
+        }
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
