@@ -335,10 +335,13 @@ curl -X GET http://localhost:18080/api/v1/search/count \
 | `opensearch.index_prefix` | 租户索引前缀 | tenant |
 | `storage.type` | 存储类型 | local (local/s3) |
 | `storage.local_path` | 本地存储路径 | ./data/files |
-| `storage.doc_parse_provider` | 统一文档解析提供者（必须配置） | qwen |
+| `storage.doc_parse_provider` | 文档解析提供者（必须配置） | qwen |
 | `storage.doc_parse_api_url` | DashScope API 地址 | - |
 | `storage.doc_parse_api_key` | DashScope API 密钥 | - |
-| `storage.doc_parse_model` | 文档解析模型名称 | qwen3.7-plus |
+| `storage.doc_parse_model` | 文档解析模型（PDF/Office/EPUB） | qwen-long |
+| `storage.doc_parse_vl_model` | 视觉解析模型（Image） | qwen3-vl-plus |
+| `storage.doc_parse_vl_api_url` | 视觉模型 API 地址（可选，默认同 doc_parse_api_url） | - |
+| `storage.doc_parse_vl_api_key` | 视觉模型 API Key（可选，默认同 doc_parse_api_key） | - |
 | `jwt.secret` | JWT 密钥 | change-this-secret-key |
 | `jwt.issuer` | JWT 签发者 | opensearch-file-api |
 | `jwt.expire_time` | Token 过期时间 | 24h |
@@ -357,10 +360,21 @@ curl -X GET http://localhost:18080/api/v1/search/count \
 
 | Provider | 说明 | 适用场景 |
 |----------|------|----------|
-| `openai` | OpenAI 兼容 API | 使用 OpenAI 或兼容服务（如 Ollama v1 API） |
+| `openai` | OpenAI 兼容 API | OpenAI、DashScope text-embedding-v4、Ollama v1 API 等兼容服务 |
 | `local` | 本地 Ollama 服务 | 使用本地 Ollama 部署模型 |
 | `clip` | CLIP 多模态服务 | 图片+文本多模态嵌入 |
 | `none` | 不启用（默认） | 仅使用全文搜索，无需向量服务 |
+
+环境变量示例（使用 DashScope text-embedding-v4）：
+
+```bash
+export OPENSEARCH_EMBEDDING_PROVIDER=openai
+export OPENSEARCH_EMBEDDING_APIURL=https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
+export OPENSEARCH_EMBEDDING_APIKEY=sk-your-dashscope-api-key
+export OPENSEARCH_EMBEDDING_MODEL=text-embedding-v4
+export OPENSEARCH_EMBEDDING_DIMENSIONS=1536
+export OPENSEARCH_EMBEDDING_TIMEOUT=120
+```
 
 环境变量示例（使用 Ollama 本地部署）：
 
@@ -414,11 +428,16 @@ bash scripts/test_e2e.sh
 
 # Embedding E2E 测试（需要 mock embedding server，自动启动）
 bash scripts/test_e2e_embedding.sh
+
+# Doc Parse E2E 测试（需要 mock doc parse server，自动启动）
+bash scripts/test_e2e_doc_parse.sh
 ```
 
 E2E 测试覆盖：租户管理 → JWT 生成 → 文件上传 → 文件操作 → 文本搜索 → 租户隔离 → 向量搜索（KNN/混合/自动Embedding检索） → 单租户检索 → **跨租户联合搜索** → 聚合统计（含租户细分）→ 健康检查
 
 Embedding E2E 测试覆盖：启动 mock embedding server → 重启 app（启用 embedding） → 上传文件（自动生成向量） → retrieve JSON 模式 → retrieve multipart 模式 → 文件+query 混合模式
+
+Doc Parse E2E 测试覆盖：启动 mock doc parse server → 重启 app（启用文档解析） → 上传全格式文件（TXT/HTML/MD/CSV/JSON/PDF/DOCX/XLSX/PNG） → 验证文本直接提取 → 验证文档 API 提取 → 验证 mock API 调用 → 聚合统计 → 过滤搜索
 
 ### 代码质量
 
@@ -440,27 +459,31 @@ make docker-build
 
 | 类型 | 格式 | 内容提取 |
 |------|------|----------|
-| PDF | .pdf | 文本内容、扫描件 OCR、元数据（Qwen3.7-Plus） |
-| 图片 | .jpg, .png, .gif, .webp, .tiff, .bmp, .svg | 元数据（尺寸、格式）、OCR 文字提取（Qwen3.7-Plus） |
+| PDF | .pdf | 文本内容、扫描件 OCR、元数据（qwen-long，fileid://） |
+| 图片 | .jpg, .png, .gif, .webp, .tiff, .bmp | 元数据（尺寸、格式）、OCR 文字提取（qwen3-vl-plus，base64） |
 | 文本 | .txt, .md, .json, .csv | 纯文本直接返回 |
 | HTML | .html, .htm | 提取纯文本（过滤 script/style） |
-| Office | .doc, .docx, .xls, .xlsx, .ppt, .pptx | 内容与表格提取（Qwen3.7-Plus） |
-| RTF | .rtf | 文本内容（Qwen3.7-Plus） |
-| 电子书 | .epub | 章节内容提取（Qwen3.7-Plus） |
+| Office | .doc, .docx, .xls, .xlsx, .ppt, .pptx | 内容与表格提取（qwen-long，fileid://） |
+| RTF | .rtf | 文本内容（qwen-long，fileid://） |
+| 电子书 | .epub | 章节内容提取（qwen-long，fileid://） |
 
-## Qwen3.7-Plus 统一文档解析
+## Qwen 双模型文档解析
 
-Qwen3.7-Plus 是统一文档解析模型，支持全格式文件内容提取，内置 OCR + 表格/公式理解。**必须配置**。
+Qwen 双模型架构根据文件类型自动路由到最合适的模型，**必须配置**。
 
-**支持的文档格式：**
+| 模型 | 用途 | 协议 | 适用格式 |
+|------|------|------|----------|
+| `qwen-long`（默认） | 文档解析 | 文件上传 + `fileid://` | PDF、Office、RTF、EPUB |
+| `qwen3-vl-plus`（默认） | 视觉解析 | base64 `image_url` | JPG、PNG、GIF、WebP、TIFF、BMP |
 
-| 类别 | 格式 | 说明 |
-|------|------|------|
-| PDF | 原生 PDF、扫描件 PDF | 含加密/高压缩/多页长文档 |
-| 图片 | JPG/PNG/TIFF/BMP/GIF/WebP | 截图、照片、手写件、模糊扫描件 |
-| Office | Word(.docx/.doc)、Excel(.xlsx/.xls)、PPT(.pptx/.ppt) | 直接解析内容与表格 |
-| 文本 | TXT、Markdown、HTML、CSV、JSON | 纯文本直接返回 |
-| 电子书 | EPUB | 章节内容提取 |
+**提取架构：**
+
+```
+QwenDocExtractor（doc_parse_provider=qwen，必须配置）
+├── PDF/Office/EPUB → 上传到 DashScope /v1/files → fileid:// 引用 → qwen-long
+├── Image → base64 data URL → image_url → qwen3-vl-plus
+└── Text/HTML/CSV/JSON → 直接读取（不调用 API）
+```
 
 **配置方式：**
 
@@ -469,35 +492,34 @@ Qwen3.7-Plus 是统一文档解析模型，支持全格式文件内容提取，�
 storage:
   doc_parse_provider: "qwen"
   doc_parse_api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-  doc_parse_api_key: "${DASHSCOPE_API_KEY}"
-  doc_parse_model: "qwen3.7-plus"
+  doc_parse_api_key: "${DASHSCOPE_API_KEY}"  # 需配合环境变量使用
+  doc_parse_model: "qwen-long"              # 文档解析模型（PDF/Office/EPUB）
+  doc_parse_vl_model: "qwen3-vl-plus"       # 视觉解析模型（Image）
+  # doc_parse_vl_api_url: ""                # 可选，默认同 doc_parse_api_url
+  # doc_parse_vl_api_key: ""                # 可选，默认同 doc_parse_api_key
 ```
 
 ```bash
-# 环境变量
+# 环境变量（推荐方式，viper BindEnv 优先级高于配置文件）
 export OPENSEARCH_STORAGE_DOC_PARSE_PROVIDER=qwen
 export OPENSEARCH_STORAGE_DOC_PARSE_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
 export OPENSEARCH_STORAGE_DOC_PARSE_API_KEY=sk-your-dashscope-api-key
-export OPENSEARCH_STORAGE_DOC_PARSE_MODEL=qwen3.7-plus
+export OPENSEARCH_STORAGE_DOC_PARSE_MODEL=qwen-long
+export OPENSEARCH_STORAGE_DOC_PARSE_VL_MODEL=qwen3-vl-plus
 ```
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `doc_parse_provider` | 文档解析提供者（**必须**配置为 `qwen`） | qwen |
-| `doc_parse_api_url` | DashScope API 地址 | - |
+| `doc_parse_api_url` | DashScope chat completions API 地址 | - |
 | `doc_parse_api_key` | DashScope API 密钥 | - |
-| `doc_parse_model` | 模型名称 | `qwen3.7-plus` |
+| `doc_parse_model` | 文档解析模型（PDF/Office/EPUB） | `qwen-long` |
+| `doc_parse_vl_model` | 视觉解析模型（Image） | `qwen3-vl-plus` |
+| `doc_parse_vl_api_url` | 视觉模型 API 地址（可选，默认复用 doc_parse_api_url） | - |
+| `doc_parse_vl_api_key` | 视觉模型 API Key（可选，默认复用 doc_parse_api_key） | - |
 
-**提取架构：**
-
-```
-QwenDocExtractor（doc_parse_provider=qwen，必须配置）
-├── 图片 → base64 data URL → image_url
-├── PDF/Office → base64 data URL → file
-└── 文本 → 直接读取
-```
-
-> **说明**: 所有文件类型统一使用 base64 编码直接发送，无需公网访问存储。
+> **注意**: 配置文件中 `doc_parse_api_key: "${DASHSCOPE_API_KEY}"` 是占位符，viper 不会自动展开。
+> 实际生效需通过环境变量 `OPENSEARCH_STORAGE_DOC_PARSE_API_KEY` 注入，或在 Docker Compose 中设置。
 
 ## OpenSearch 索引映射
 
