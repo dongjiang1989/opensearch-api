@@ -228,7 +228,7 @@ func TestQwenDocExtractor_Extract_DocumentWithMockServer(t *testing.T) {
 		if r.Method == "POST" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
-			fmt.Fprintf(w, `{"data":{"uploaded_files":[{"name":"doc.pdf","file_id":"file-test-123"}],"failed_uploads":[]},"request_id":"mock-req-001"}`)
+			_, _ = fmt.Fprintf(w, `{"data":{"uploaded_files":[{"name":"doc.pdf","file_id":"file-test-123"}],"failed_uploads":[]},"request_id":"mock-req-001"}`)
 			return
 		}
 		w.WriteHeader(405)
@@ -239,7 +239,7 @@ func TestQwenDocExtractor_Extract_DocumentWithMockServer(t *testing.T) {
 		if r.Method == "DELETE" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
-			fmt.Fprintf(w, `{"id":"file-test-123","deleted":true}`)
+			_, _ = fmt.Fprintf(w, `{"id":"file-test-123","deleted":true}`)
 			return
 		}
 		w.WriteHeader(405)
@@ -248,7 +248,7 @@ func TestQwenDocExtractor_Extract_DocumentWithMockServer(t *testing.T) {
 	// Chat completions endpoint
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		// Verify the message contains file_id reference
 		messages := req["messages"].([]interface{})
@@ -266,7 +266,7 @@ func TestQwenDocExtractor_Extract_DocumentWithMockServer(t *testing.T) {
 		assert.True(t, hasFile, "chat request should contain file reference")
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"choices":[{"message":{"content":"Extracted PDF content from mock"}}]}`)
+		_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"content":"Extracted PDF content from mock"}}]}`)
 	})
 
 	server := httptest.NewServer(mux)
@@ -291,7 +291,7 @@ func TestQwenDocExtractor_Extract_DocumentUploadFailure(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/files", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
-		fmt.Fprintf(w, `{"error":"upload failed"}`)
+		_, _ = fmt.Fprintf(w, `{"error":"upload failed"}`)
 	})
 
 	server := httptest.NewServer(mux)

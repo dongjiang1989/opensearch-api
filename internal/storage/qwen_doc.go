@@ -203,7 +203,9 @@ func (e *QwenDocExtractor) uploadFile(ctx context.Context, data []byte, filename
 	if err := w.WriteField("purpose", "file-extract"); err != nil {
 		return "", fmt.Errorf("write purpose field: %w", err)
 	}
-	w.Close()
+	if err := w.Close(); err != nil {
+		return "", fmt.Errorf("close multipart writer: %w", err)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", uploadURL, &buf)
 	if err != nil {
