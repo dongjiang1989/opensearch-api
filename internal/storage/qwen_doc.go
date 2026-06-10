@@ -186,9 +186,9 @@ func (e *QwenDocExtractor) parseImage(ctx context.Context, data []byte, contentT
 	})
 }
 
-// parseDocument 使用文档模型 (qwen-long) 上传文件到 DashScope 后引用 file_id 解析 PDF/Office 文档
+// parseDocument 使用文档模型 (qwen-long) 上传文件到 DashScope 后通过 fileid:// 引用解析 PDF/Office 文档
 func (e *QwenDocExtractor) parseDocument(ctx context.Context, data []byte, contentType string) (string, error) {
-	// Step 1: 上传文件到 DashScope 获取 file_id
+	// Step 1: 上传文件到 DashScope (OpenAI compatible endpoint) 获取 file_id
 	filename := "document" + extensionFromContentType(contentType)
 	fileID, err := e.uploadFile(ctx, data, filename)
 	if err != nil {
@@ -196,19 +196,21 @@ func (e *QwenDocExtractor) parseDocument(ctx context.Context, data []byte, conte
 	}
 	defer e.deleteFile(ctx, fileID)
 
-	// Step 2: 在 chat 消息中引用 file_id
+	// Step 2: 通过 fileid:// 在 system message 中引用已上传文件
 	prompt := "请提取这个文档中的所有文字内容，包括表格、公式等结构化内容。请保持原文的段落和层次结构。"
 
-	return e.performChat(ctx, e.docAPIURL, e.docAPIKey, e.docModel, []interface{}{
-		map[string]interface{}{
-			"type": "file",
-			"file": fileID,
+	messages := []map[string]interface{}{
+		{
+			"role":    "system",
+			"content": fmt.Sprintf("fileid://%s", fileID),
 		},
-		map[string]interface{}{
-			"type": "text",
-			"text": prompt,
+		{
+			"role":    "user",
+			"content": prompt,
 		},
-	})
+	}
+
+	return e.performChatMessages(ctx, e.docAPIURL, e.docAPIKey, e.docModel, messages)
 }
 
 // baseURLFrom 从 apiURL 中提取 DashScope 基础 URL（用于文件上传/删除）
@@ -227,9 +229,10 @@ func baseURLFrom(apiURL string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-// uploadFile 上传文件到 DashScope /api/v1/files，返回 file_id
+// uploadFile 上传文件到 DashScope compatible-mode /v1/files，返回 file_id
+// 必须使用 OpenAI compatible 端点，返回的 file_id（如 file-fe-xxx）才能通过 fileid:// 协议在 chat 中引用
 func (e *QwenDocExtractor) uploadFile(ctx context.Context, data []byte, filename string) (string, error) {
-	uploadURL := baseURLFrom(e.docAPIURL) + "/api/v1/files"
+	uploadURL := baseURLFrom(e.docAPIURL) + "/compatible-mode/v1/files"
 
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -274,6 +277,11 @@ func (e *QwenDocExtractor) uploadFile(ctx context.Context, data []byte, filename
 	}
 
 	var result struct {
+		// OpenAI-compatible format (compatible-mode/v1/files): {"id": "file-fe-xxx", ...}
+		ID     string `json:"id"`
+		Object string `json:"object"`
+		Status string `json:"status"`
+		// DashScope native format fallback: {"data": {"uploaded_files": [{"file_id": "..."}]}}
 		Data struct {
 			UploadedFiles []struct {
 				Name   string `json:"name"`
@@ -281,19 +289,21 @@ func (e *QwenDocExtractor) uploadFile(ctx context.Context, data []byte, filename
 			} `json:"uploaded_files"`
 			FailedUploads []interface{} `json:"failed_uploads"`
 		} `json:"data"`
-		ID        string `json:"id"`         // OpenAI-compatible fallback
-		RequestID string `json:"request_id"` // DashScope request_id
+		RequestID string `json:"request_id"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return "", fmt.Errorf("failed to parse upload response: %w", err)
 	}
 
-	// DashScope native format: data.uploaded_files[0].file_id
+	// OpenAI-compatible format (primary): {"id": "file-fe-xxx"}
 	var fileID string
-	if len(result.Data.UploadedFiles) > 0 {
+	if result.ID != "" {
+		fileID = result.ID
+	}
+	// DashScope native format fallback: data.uploaded_files[0].file_id
+	if fileID == "" && len(result.Data.UploadedFiles) > 0 {
 		fileID = result.Data.UploadedFiles[0].FileID
 	}
-	// OpenAI-compatible format fallback: {"id": "file-xxx"}
 	if fileID == "" {
 		fileID = result.ID
 	}
@@ -307,7 +317,7 @@ func (e *QwenDocExtractor) uploadFile(ctx context.Context, data []byte, filename
 
 // deleteFile 删除 DashScope 上已上传的文件（best-effort cleanup）
 func (e *QwenDocExtractor) deleteFile(ctx context.Context, fileID string) {
-	deleteURL := baseURLFrom(e.docAPIURL) + "/api/v1/files/" + fileID
+	deleteURL := baseURLFrom(e.docAPIURL) + "/compatible-mode/v1/files/" + fileID
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", deleteURL, nil)
 	if err != nil {
@@ -367,6 +377,64 @@ func (e *QwenDocExtractor) performChat(ctx context.Context, apiURL, apiKey, mode
 	}
 
 	// 解析 OpenAI 兼容格式的响应
+	type chatResponse struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	var chatResp chatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return "", fmt.Errorf("failed to decode qwen doc response: %w", err)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return "", fmt.Errorf("qwen doc API returned no choices")
+	}
+
+	return strings.TrimSpace(chatResp.Choices[0].Message.Content), nil
+}
+
+// performChatMessages 调用 OpenAI 兼容 chat completions API（接受完整 messages 数组）
+// 用于文档解析场景，需要在 system message 中通过 fileid:// 引用已上传文件
+func (e *QwenDocExtractor) performChatMessages(ctx context.Context, apiURL, apiKey, model string, messages []map[string]interface{}) (string, error) {
+	reqBody := map[string]interface{}{
+		"model":    model,
+		"messages": messages,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal qwen doc request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("failed to create qwen doc request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	chatStart := time.Now()
+	resp, err := e.httpClient.Do(req)
+	metrics.Observe("dashscope", "chat", time.Since(chatStart), err)
+	if err != nil {
+		return "", fmt.Errorf("qwen doc request failed: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("qwen doc API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
 	type chatResponse struct {
 		Choices []struct {
 			Message struct {

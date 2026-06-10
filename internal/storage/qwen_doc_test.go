@@ -257,23 +257,24 @@ func TestQwenDocExtractor_Extract_DocumentWithMockServer(t *testing.T) {
 	// Start a mock HTTP server that handles file upload and chat completions
 	mux := http.NewServeMux()
 
-	// File upload endpoint
-	mux.HandleFunc("/api/v1/files", func(w http.ResponseWriter, r *http.Request) {
+	// File upload endpoint (OpenAI compatible-mode)
+	mux.HandleFunc("/compatible-mode/v1/files", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
-			_, _ = fmt.Fprintf(w, `{"data":{"uploaded_files":[{"name":"doc.pdf","file_id":"file-test-123"}],"failed_uploads":[]},"request_id":"mock-req-001"}`)
+			// OpenAI-compatible response format
+			_, _ = fmt.Fprintf(w, `{"id":"file-fe-test-123","object":"file","bytes":1024,"filename":"doc.pdf","purpose":"file-extract","status":"processed","created_at":1781084839}`)
 			return
 		}
 		w.WriteHeader(405)
 	})
 
 	// File delete endpoint
-	mux.HandleFunc("/api/v1/files/file-test-123", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/compatible-mode/v1/files/file-fe-test-123", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "DELETE" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
-			_, _ = fmt.Fprintf(w, `{"id":"file-test-123","deleted":true}`)
+			_, _ = fmt.Fprintf(w, `{"id":"file-fe-test-123","deleted":true}`)
 			return
 		}
 		w.WriteHeader(405)
@@ -284,20 +285,17 @@ func TestQwenDocExtractor_Extract_DocumentWithMockServer(t *testing.T) {
 		var req map[string]interface{}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 
-		// Verify the message contains file_id reference
+		// Verify the message contains fileid:// reference in system message
 		messages := req["messages"].([]interface{})
-		msg := messages[0].(map[string]interface{})
-		content := msg["content"].([]interface{})
 
-		hasFile := false
-		for _, item := range content {
-			m := item.(map[string]interface{})
-			if m["type"] == "file" {
-				hasFile = true
-				assert.Equal(t, "file-test-123", m["file"])
-			}
-		}
-		assert.True(t, hasFile, "chat request should contain file reference")
+		// First message should be system with fileid://
+		sysMsg := messages[0].(map[string]interface{})
+		assert.Equal(t, "system", sysMsg["role"])
+		assert.Equal(t, "fileid://file-fe-test-123", sysMsg["content"])
+
+		// Second message should be user
+		userMsg := messages[1].(map[string]interface{})
+		assert.Equal(t, "user", userMsg["role"])
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"content":"Extracted PDF content from mock"}}]}`)
@@ -323,7 +321,7 @@ func TestQwenDocExtractor_Extract_DocumentWithMockServer(t *testing.T) {
 func TestQwenDocExtractor_Extract_DocumentUploadFailure(t *testing.T) {
 	// Mock server that rejects file uploads
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/files", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/compatible-mode/v1/files", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		_, _ = fmt.Fprintf(w, `{"error":"upload failed"}`)
 	})
@@ -352,19 +350,19 @@ func TestQwenDocExtractor_Extract_ModelRouting(t *testing.T) {
 
 	mux := http.NewServeMux()
 
-	// 文件上传（文档模型需要）
-	mux.HandleFunc("/api/v1/files", func(w http.ResponseWriter, r *http.Request) {
+	// 文件上传（文档模型需要，使用 compatible-mode 端点）
+	mux.HandleFunc("/compatible-mode/v1/files", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(200)
-			_, _ = fmt.Fprintf(w, `{"data":{"uploaded_files":[{"name":"doc.pdf","file_id":"file-abc"}],"failed_uploads":[]}}`)
+			_, _ = fmt.Fprintf(w, `{"id":"file-fe-abc","object":"file","bytes":1024,"filename":"doc.pdf","purpose":"file-extract","status":"processed"}`)
 			return
 		}
 		w.WriteHeader(405)
 	})
-	mux.HandleFunc("/api/v1/files/file-abc", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/compatible-mode/v1/files/file-fe-abc", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		_, _ = fmt.Fprintf(w, `{"id":"file-abc","deleted":true}`)
+		_, _ = fmt.Fprintf(w, `{"id":"file-fe-abc","deleted":true}`)
 	})
 
 	// Chat completions：记录请求中的 model 字段
