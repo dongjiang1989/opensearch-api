@@ -17,33 +17,65 @@ import (
 	"github.com/dongjiang1989/opensearch-api/internal/metrics"
 )
 
-// QwenDocExtractor Qwen3.7-Plus 统一文档解析提取器
-// 支持 PDF（含扫描件）、图片、Office、文本等全格式
+// QwenDocExtractor Qwen 双模型文档解析提取器
+// PDF/Office 文档 → docModel (qwen-long，支持文件上传 file_id)
+// Image/Text       → vlModel (qwen3-vl-plus，支持 image_url/text)
 // 通过 DashScope OpenAI 兼容 API 调用
 type QwenDocExtractor struct {
-	apiURL     string // DashScope chat completions 地址
-	apiKey     string // DashScope API 密钥
-	model      string // 模型名称，默认 qwen3.7-plus
+	// 文档解析模型（PDF/Office）
+	docAPIURL string // DashScope chat completions 地址
+	docAPIKey string // DashScope API 密钥
+	docModel  string // 模型名称，默认 qwen-long
+
+	// 视觉解析模型（Image）
+	vlAPIURL string // 视觉模型 API 地址（可选，默认同 docAPIURL）
+	vlAPIKey string // 视觉模型 API Key（可选，默认同 docAPIKey）
+	vlModel  string // 视觉模型名称，默认 qwen3-vl-plus
+
 	httpClient *http.Client
 }
 
 // QwenDocExtractorConfig QwenDocExtractor 配置
 type QwenDocExtractorConfig struct {
+	// 文档解析模型（PDF/Office）
 	APIURL string // DashScope chat completions 地址
 	APIKey string // DashScope API 密钥
-	Model  string // 模型名称，默认 qwen3.7-plus
+	Model  string // 文档模型名称，默认 qwen-long
+
+	// 视觉解析模型（Image）
+	VLAPIURL string // 视觉模型 API 地址（可选，默认同 APIURL）
+	VLAPIKey string // 视觉模型 API Key（可选，默认同 APIKey）
+	VLModel  string // 视觉模型名称，默认 qwen3-vl-plus
 }
 
-// NewQwenDocExtractor 创建 Qwen3.7-Plus 文档解析提取器
+// NewQwenDocExtractor 创建 Qwen 双模型文档解析提取器
 func NewQwenDocExtractor(cfg QwenDocExtractorConfig) *QwenDocExtractor {
-	model := cfg.Model
-	if model == "" {
-		model = "qwen3.7-plus"
+	docModel := cfg.Model
+	if docModel == "" {
+		docModel = "qwen-long"
 	}
+	vlModel := cfg.VLModel
+	if vlModel == "" {
+		vlModel = "qwen3-vl-plus"
+	}
+
+	// VL API 地址/Key 未配置时复用文档模型的配置
+	vlAPIURL := cfg.VLAPIURL
+	if vlAPIURL == "" {
+		vlAPIURL = cfg.APIURL
+	}
+	vlAPIKey := cfg.VLAPIKey
+	if vlAPIKey == "" {
+		vlAPIKey = cfg.APIKey
+	}
+
 	return &QwenDocExtractor{
-		apiURL: cfg.APIURL,
-		apiKey: cfg.APIKey,
-		model:  model,
+		docAPIURL: cfg.APIURL,
+		docAPIKey: cfg.APIKey,
+		docModel:  docModel,
+		vlAPIURL:  vlAPIURL,
+		vlAPIKey:  vlAPIKey,
+		vlModel:   vlModel,
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second, // 文档解析可能较慢
 		},
@@ -80,18 +112,22 @@ func (e *QwenDocExtractor) CanHandle(contentType string) bool {
 
 // Extract 提取文档内容
 func (e *QwenDocExtractor) Extract(ctx context.Context, reader io.Reader, contentType string) (*ExtractedContent, error) {
-	if e.apiURL == "" {
-		return nil, fmt.Errorf("qwen doc parse API URL is not configured")
-	}
-
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file data: %w", err)
 	}
 
+	// 根据文件类型选择模型
+	var modelUsed string
+	if isDocumentContent(contentType) {
+		modelUsed = e.docModel
+	} else {
+		modelUsed = e.vlModel
+	}
+
 	metadata := map[string]interface{}{
 		"doc_parse_provider": "qwen",
-		"doc_parse_model":    e.model,
+		"doc_parse_model":    modelUsed,
 		"content_type":       contentType,
 		"size":               len(data),
 	}
@@ -106,10 +142,16 @@ func (e *QwenDocExtractor) Extract(ctx context.Context, reader io.Reader, conten
 		}
 		metadata["doc_parse_method"] = "direct"
 	} else if isImageContent(contentType) {
-		// 图片类型：base64 data URL → image_url
+		// 图片类型：使用 VL 模型 (qwen3-vl-plus)
+		if e.vlAPIURL == "" {
+			return nil, fmt.Errorf("qwen VL API URL is not configured")
+		}
 		text, err = e.parseImage(ctx, data, contentType)
 	} else {
-		// PDF / Office / EPUB：base64 data URL → file
+		// PDF / Office / EPUB：使用文档模型 (qwen-long)
+		if e.docAPIURL == "" {
+			return nil, fmt.Errorf("qwen doc parse API URL is not configured")
+		}
 		text, err = e.parseDocument(ctx, data, contentType)
 	}
 
@@ -127,12 +169,12 @@ func (e *QwenDocExtractor) Extract(ctx context.Context, reader io.Reader, conten
 	}, nil
 }
 
-// parseImage 使用 base64 编码解析图片
+// parseImage 使用 VL 模型 (qwen3-vl-plus) + base64 编码解析图片
 func (e *QwenDocExtractor) parseImage(ctx context.Context, data []byte, contentType string) (string, error) {
 	b64 := base64.StdEncoding.EncodeToString(data)
 	dataURL := fmt.Sprintf("data:%s;base64,%s", contentType, b64)
 
-	return e.performChat(ctx, []interface{}{
+	return e.performChat(ctx, e.vlAPIURL, e.vlAPIKey, e.vlModel, []interface{}{
 		map[string]interface{}{
 			"type":      "image_url",
 			"image_url": map[string]interface{}{"url": dataURL},
@@ -144,7 +186,7 @@ func (e *QwenDocExtractor) parseImage(ctx context.Context, data []byte, contentT
 	})
 }
 
-// parseDocument 上传文件到 DashScope 后引用 file_id 解析 PDF/Office 文档
+// parseDocument 使用文档模型 (qwen-long) 上传文件到 DashScope 后引用 file_id 解析 PDF/Office 文档
 func (e *QwenDocExtractor) parseDocument(ctx context.Context, data []byte, contentType string) (string, error) {
 	// Step 1: 上传文件到 DashScope 获取 file_id
 	filename := "document" + extensionFromContentType(contentType)
@@ -157,7 +199,7 @@ func (e *QwenDocExtractor) parseDocument(ctx context.Context, data []byte, conte
 	// Step 2: 在 chat 消息中引用 file_id
 	prompt := "请提取这个文档中的所有文字内容，包括表格、公式等结构化内容。请保持原文的段落和层次结构。"
 
-	return e.performChat(ctx, []interface{}{
+	return e.performChat(ctx, e.docAPIURL, e.docAPIKey, e.docModel, []interface{}{
 		map[string]interface{}{
 			"type": "file",
 			"file": fileID,
@@ -169,25 +211,25 @@ func (e *QwenDocExtractor) parseDocument(ctx context.Context, data []byte, conte
 	})
 }
 
-// baseURL 从配置的 apiURL 中提取 DashScope 基础 URL
-func (e *QwenDocExtractor) baseURL() string {
-	u, err := url.Parse(e.apiURL)
+// baseURLFrom 从 apiURL 中提取 DashScope 基础 URL（用于文件上传/删除）
+func baseURLFrom(apiURL string) string {
+	u, err := url.Parse(apiURL)
 	if err != nil {
 		// fallback: 截取到 /compatible-mode 或 /v1
-		if idx := strings.Index(e.apiURL, "/compatible-mode"); idx > 0 {
-			return e.apiURL[:idx]
+		if idx := strings.Index(apiURL, "/compatible-mode"); idx > 0 {
+			return apiURL[:idx]
 		}
-		if idx := strings.Index(e.apiURL, "/v1"); idx > 0 {
-			return e.apiURL[:idx]
+		if idx := strings.Index(apiURL, "/v1"); idx > 0 {
+			return apiURL[:idx]
 		}
-		return e.apiURL
+		return apiURL
 	}
 	return u.Scheme + "://" + u.Host
 }
 
 // uploadFile 上传文件到 DashScope /api/v1/files，返回 file_id
 func (e *QwenDocExtractor) uploadFile(ctx context.Context, data []byte, filename string) (string, error) {
-	uploadURL := e.baseURL() + "/api/v1/files"
+	uploadURL := baseURLFrom(e.docAPIURL) + "/api/v1/files"
 
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -213,8 +255,8 @@ func (e *QwenDocExtractor) uploadFile(ctx context.Context, data []byte, filename
 	}
 
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	if e.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	if e.docAPIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+e.docAPIKey)
 	}
 
 	uploadStart := time.Now()
@@ -265,14 +307,14 @@ func (e *QwenDocExtractor) uploadFile(ctx context.Context, data []byte, filename
 
 // deleteFile 删除 DashScope 上已上传的文件（best-effort cleanup）
 func (e *QwenDocExtractor) deleteFile(ctx context.Context, fileID string) {
-	deleteURL := e.baseURL() + "/api/v1/files/" + fileID
+	deleteURL := baseURLFrom(e.docAPIURL) + "/api/v1/files/" + fileID
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", deleteURL, nil)
 	if err != nil {
 		return
 	}
-	if e.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	if e.docAPIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+e.docAPIKey)
 	}
 
 	resp, err := e.httpClient.Do(req)
@@ -282,10 +324,10 @@ func (e *QwenDocExtractor) deleteFile(ctx context.Context, fileID string) {
 	_ = resp.Body.Close()
 }
 
-// performChat 调用 OpenAI 兼容 chat completions API
-func (e *QwenDocExtractor) performChat(ctx context.Context, content []interface{}) (string, error) {
+// performChat 调用 OpenAI 兼容 chat completions API（支持指定模型/地址/密钥）
+func (e *QwenDocExtractor) performChat(ctx context.Context, apiURL, apiKey, model string, content []interface{}) (string, error) {
 	reqBody := map[string]interface{}{
-		"model": e.model,
+		"model": model,
 		"messages": []map[string]interface{}{
 			{
 				"role":    "user",
@@ -299,14 +341,14 @@ func (e *QwenDocExtractor) performChat(ctx context.Context, content []interface{
 		return "", fmt.Errorf("failed to marshal qwen doc request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", e.apiURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("failed to create qwen doc request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if e.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
 	chatStart := time.Now()
@@ -343,6 +385,23 @@ func (e *QwenDocExtractor) performChat(ctx context.Context, content []interface{
 	}
 
 	return strings.TrimSpace(chatResp.Choices[0].Message.Content), nil
+}
+
+// isDocumentContent 判断是否是文档类型（PDF/Office/EPUB），需要走 qwen-long
+func isDocumentContent(contentType string) bool {
+	switch contentType {
+	case "application/pdf",
+		"application/msword",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"application/vnd.ms-excel",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/vnd.ms-powerpoint",
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"application/rtf", "text/rtf",
+		"application/epub+zip":
+		return true
+	}
+	return false
 }
 
 // isImageContent 判断是否是图片类型

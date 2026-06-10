@@ -124,13 +124,36 @@ func TestQwenDocExtractor_DefaultModel(t *testing.T) {
 	e := NewQwenDocExtractor(QwenDocExtractorConfig{
 		APIURL: "http://localhost:9999",
 	})
-	assert.Equal(t, "qwen3.7-plus", e.model)
+	assert.Equal(t, "qwen-long", e.docModel)
+	assert.Equal(t, "qwen3-vl-plus", e.vlModel)
 
 	e2 := NewQwenDocExtractor(QwenDocExtractorConfig{
-		APIURL: "http://localhost:9999",
-		Model:  "custom-model",
+		APIURL:  "http://localhost:9999",
+		Model:   "custom-doc-model",
+		VLModel: "custom-vl-model",
 	})
-	assert.Equal(t, "custom-model", e2.model)
+	assert.Equal(t, "custom-doc-model", e2.docModel)
+	assert.Equal(t, "custom-vl-model", e2.vlModel)
+}
+
+func TestQwenDocExtractor_VLFallback(t *testing.T) {
+	// VL APIURL/APIKey 未配置时应复用文档模型的配置
+	e := NewQwenDocExtractor(QwenDocExtractorConfig{
+		APIURL: "http://localhost:9999/v1/chat",
+		APIKey: "shared-key",
+	})
+	assert.Equal(t, "http://localhost:9999/v1/chat", e.vlAPIURL)
+	assert.Equal(t, "shared-key", e.vlAPIKey)
+
+	// 单独配置 VL 时应使用独立值
+	e2 := NewQwenDocExtractor(QwenDocExtractorConfig{
+		APIURL:   "http://doc:9999/v1/chat",
+		APIKey:   "doc-key",
+		VLAPIURL: "http://vl:8888/v1/chat",
+		VLAPIKey: "vl-key",
+	})
+	assert.Equal(t, "http://vl:8888/v1/chat", e2.vlAPIURL)
+	assert.Equal(t, "vl-key", e2.vlAPIKey)
 }
 
 func TestExtractTextFromHTML(t *testing.T) {
@@ -180,6 +203,18 @@ func TestIsImageContent(t *testing.T) {
 	assert.False(t, isImageContent("text/plain"))
 }
 
+func TestIsDocumentContent(t *testing.T) {
+	assert.True(t, isDocumentContent("application/pdf"))
+	assert.True(t, isDocumentContent("application/msword"))
+	assert.True(t, isDocumentContent("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+	assert.True(t, isDocumentContent("application/vnd.ms-excel"))
+	assert.True(t, isDocumentContent("application/epub+zip"))
+	assert.True(t, isDocumentContent("application/rtf"))
+	assert.False(t, isDocumentContent("image/jpeg"))
+	assert.False(t, isDocumentContent("text/plain"))
+	assert.False(t, isDocumentContent("application/json"))
+}
+
 func TestIsTextContent(t *testing.T) {
 	assert.True(t, isTextContent("text/plain"))
 	assert.True(t, isTextContent("text/html"))
@@ -188,7 +223,7 @@ func TestIsTextContent(t *testing.T) {
 	assert.False(t, isTextContent("application/pdf"))
 }
 
-func TestQwenDocExtractor_baseURL(t *testing.T) {
+func TestBaseURLFrom(t *testing.T) {
 	tests := []struct {
 		name     string
 		apiURL   string
@@ -213,8 +248,7 @@ func TestQwenDocExtractor_baseURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewQwenDocExtractor(QwenDocExtractorConfig{APIURL: tt.apiURL})
-			assert.Equal(t, tt.expected, e.baseURL())
+			assert.Equal(t, tt.expected, baseURLFrom(tt.apiURL))
 		})
 	}
 }
@@ -310,4 +344,63 @@ func TestQwenDocExtractor_Extract_DocumentUploadFailure(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "", result.Text)
 	assert.Contains(t, result.Metadata["doc_parse_error"], "upload")
+}
+
+func TestQwenDocExtractor_Extract_ModelRouting(t *testing.T) {
+	// 验证图片走 VL 模型，文档走 doc 模型
+	var receivedModel string
+
+	mux := http.NewServeMux()
+
+	// 文件上传（文档模型需要）
+	mux.HandleFunc("/api/v1/files", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(200)
+			_, _ = fmt.Fprintf(w, `{"data":{"uploaded_files":[{"name":"doc.pdf","file_id":"file-abc"}],"failed_uploads":[]}}`)
+			return
+		}
+		w.WriteHeader(405)
+	})
+	mux.HandleFunc("/api/v1/files/file-abc", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = fmt.Fprintf(w, `{"id":"file-abc","deleted":true}`)
+	})
+
+	// Chat completions：记录请求中的 model 字段
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		receivedModel = req["model"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"content":"extracted"}}]}`)
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	e := NewQwenDocExtractor(QwenDocExtractorConfig{
+		APIURL:  server.URL + "/v1/chat/completions",
+		APIKey:  "doc-key",
+		Model:   "qwen-long",
+		VLModel: "qwen3-vl-plus",
+	})
+
+	ctx := context.Background()
+
+	// 测试图片 → VL 模型
+	receivedModel = ""
+	reader := strings.NewReader("fake image")
+	result, err := e.Extract(ctx, reader, "image/png")
+	assert.NoError(t, err)
+	assert.Equal(t, "qwen3-vl-plus", receivedModel)
+	assert.Equal(t, "qwen3-vl-plus", result.Metadata["doc_parse_model"])
+
+	// 测试 PDF → 文档模型
+	receivedModel = ""
+	reader = strings.NewReader("fake pdf")
+	result, err = e.Extract(ctx, reader, "application/pdf")
+	assert.NoError(t, err)
+	assert.Equal(t, "qwen-long", receivedModel)
+	assert.Equal(t, "qwen-long", result.Metadata["doc_parse_model"])
 }

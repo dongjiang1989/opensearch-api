@@ -130,12 +130,16 @@ func main() {
 		logger.Fatal("doc_parse_provider must be set to 'qwen' in storage config")
 	}
 	extractor := storage.NewQwenDocExtractor(storage.QwenDocExtractorConfig{
-		APIURL: cfg.Storage.DocParseAPIURL,
-		APIKey: cfg.Storage.DocParseAPIKey,
-		Model:  cfg.Storage.DocParseModel,
+		APIURL:   cfg.Storage.DocParseAPIURL,
+		APIKey:   cfg.Storage.DocParseAPIKey,
+		Model:    cfg.Storage.DocParseModel,
+		VLAPIURL: cfg.Storage.DocParseVLAPIURL,
+		VLAPIKey: cfg.Storage.DocParseVLAPIKey,
+		VLModel:  cfg.Storage.DocParseVLModel,
 	})
-	logger.Info("using Qwen3.7-Plus document parser",
-		zap.String("model", cfg.Storage.DocParseModel),
+	logger.Info("using Qwen dual-model document parser",
+		zap.String("doc_model", cfg.Storage.DocParseModel),
+		zap.String("vl_model", cfg.Storage.DocParseVLModel),
 		zap.String("api_url", cfg.Storage.DocParseAPIURL))
 
 	// 初始化嵌入服务

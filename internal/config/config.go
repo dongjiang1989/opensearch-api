@@ -59,11 +59,16 @@ type StorageConfig struct {
 	S3KeyID    string `mapstructure:"s3_key_id"`
 	S3Secret   string `mapstructure:"s3_secret"`
 	UsePathStyle     bool `mapstructure:"use_path_style"`     // MinIO=true, 阿里云 OSS=false
-	// Qwen3.7-Plus 统一文档解析配置（必须配置）
-	DocParseProvider string `mapstructure:"doc_parse_provider"` // 必须设为 "qwen"
-	DocParseAPIURL   string `mapstructure:"doc_parse_api_url"`  // DashScope chat completions 地址
-	DocParseAPIKey   string `mapstructure:"doc_parse_api_key"`  // DashScope API 密钥
-	DocParseModel    string `mapstructure:"doc_parse_model"`    // 模型名称，默认 qwen3.7-plus
+	// Qwen 文档解析配置（双模型路由）
+	// PDF/Office 文档 → DocParseModel (qwen-long，支持文件上传)
+	// Image/Text       → DocParseVLModel (qwen3-vl-plus，支持 image_url/text)
+	DocParseProvider  string `mapstructure:"doc_parse_provider"`   // 必须设为 "qwen"
+	DocParseAPIURL    string `mapstructure:"doc_parse_api_url"`    // DashScope chat completions 地址
+	DocParseAPIKey    string `mapstructure:"doc_parse_api_key"`    // DashScope API 密钥
+	DocParseModel     string `mapstructure:"doc_parse_model"`      // 文档解析模型，默认 qwen-long
+	DocParseVLModel   string `mapstructure:"doc_parse_vl_model"`   // 视觉解析模型，默认 qwen3-vl-plus
+	DocParseVLAPIURL  string `mapstructure:"doc_parse_vl_api_url"` // 视觉模型 API 地址（可选，默认同 doc_parse_api_url）
+	DocParseVLAPIKey  string `mapstructure:"doc_parse_vl_api_key"` // 视觉模型 API Key（可选，默认同 doc_parse_api_key）
 }
 
 // JWTConfig JWT 配置
@@ -141,7 +146,8 @@ func setDefaults() {
 	// Storage
 	viper.SetDefault("storage.type", "local")
 	viper.SetDefault("storage.local_path", "./data/files")
-	viper.SetDefault("storage.doc_parse_model", "qwen3.7-plus")
+	viper.SetDefault("storage.doc_parse_model", "qwen-long")
+	viper.SetDefault("storage.doc_parse_vl_model", "qwen3-vl-plus")
 
 	// Storage - S3 (bind env explicitly for nested keys)
 	_ = viper.BindEnv("storage.use_path_style", "OPENSEARCH_STORAGE_USEPATHSTYLE")
@@ -160,6 +166,9 @@ func setDefaults() {
 	_ = viper.BindEnv("storage.doc_parse_api_url", "OPENSEARCH_STORAGE_DOC_PARSE_API_URL")
 	_ = viper.BindEnv("storage.doc_parse_api_key", "OPENSEARCH_STORAGE_DOC_PARSE_API_KEY")
 	_ = viper.BindEnv("storage.doc_parse_model", "OPENSEARCH_STORAGE_DOC_PARSE_MODEL")
+	_ = viper.BindEnv("storage.doc_parse_vl_model", "OPENSEARCH_STORAGE_DOC_PARSE_VL_MODEL")
+	_ = viper.BindEnv("storage.doc_parse_vl_api_url", "OPENSEARCH_STORAGE_DOC_PARSE_VL_API_URL")
+	_ = viper.BindEnv("storage.doc_parse_vl_api_key", "OPENSEARCH_STORAGE_DOC_PARSE_VL_API_KEY")
 
 	// JWT
 	viper.SetDefault("jwt.secret", "change-this-secret-key")

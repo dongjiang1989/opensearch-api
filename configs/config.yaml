@@ -23,12 +23,14 @@ storage:
   # s3_key_id: ""
   # s3_secret: ""
 
-  # Qwen3.7-Plus 统一文档解析（必须配置）
-  # 支持: PDF(含扫描件)、图片(JPG/PNG/TIFF/BMP)、Office(docx/xlsx/pptx)、文本、EPUB
+  # Qwen 双模型文档解析（必须配置）
+  # PDF/Office 文档 → doc_parse_model (qwen-long，支持文件上传)
+  # Image/Text       → doc_parse_vl_model (qwen3-vl-plus，支持 image_url/text)
   doc_parse_provider: "qwen"
   doc_parse_api_url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
   doc_parse_api_key: "${DASHSCOPE_API_KEY}"
-  doc_parse_model: "qwen3.7-plus"
+  doc_parse_model: "qwen-long"
+  doc_parse_vl_model: "qwen3-vl-plus"
 
 jwt:
   secret: "your-secret-key-change-in-production"
